@@ -1,0 +1,97 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --app-bg: #f8fafc;
+  --app-text: #0f172a;
+  --app-panel: #ffffff;
+  --app-panel-2: #f1f5f9;
+  --app-border: #e2e8f0;
+  --app-muted: #64748b;
+  --app-scroll-track: #e2e8f0;
+  --app-scroll-thumb: #cbd5e1;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: #0f172a;
+  --app-text: #e2e8f0;
+  --app-panel: #0f172a;
+  --app-panel-2: #0b1220;
+  --app-border: #1e293b;
+  --app-muted: #94a3b8;
+  --app-scroll-track: #1e293b;
+  --app-scroll-thumb: #475569;
+}
+
+body {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  margin: 0;
+  overflow: hidden; /* Prevent body scroll, let app handle it */
+}
+
+:root[data-theme="light"] .bg-gradient-to-br {
+  background-image: none !important;
+  background-color: var(--app-bg) !important;
+}
+
+:root[data-theme="light"] .bg-slate-950 { background-color: var(--app-panel-2) !important; }
+:root[data-theme="light"] .bg-slate-950\/50 { background-color: rgba(241, 245, 249, 0.7) !important; }
+:root[data-theme="light"] .bg-slate-900 { background-color: var(--app-panel) !important; }
+:root[data-theme="light"] .bg-slate-900\/80 { background-color: rgba(255, 255, 255, 0.9) !important; }
+:root[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(255, 255, 255, 0.85) !important; }
+:root[data-theme="light"] .bg-slate-900\/50 { background-color: rgba(255, 255, 255, 0.8) !important; }
+:root[data-theme="light"] .bg-slate-900\/40 { background-color: rgba(255, 255, 255, 0.7) !important; }
+:root[data-theme="light"] .bg-slate-900\/30 { background-color: rgba(255, 255, 255, 0.6) !important; }
+:root[data-theme="light"] .bg-slate-900\/20 { background-color: rgba(255, 255, 255, 0.5) !important; }
+:root[data-theme="light"] .bg-slate-800 { background-color: #f1f5f9 !important; }
+:root[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(241, 245, 249, 0.7) !important; }
+:root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(241, 245, 249, 0.5) !important; }
+:root[data-theme="light"] .bg-slate-800\/20 { background-color: rgba(241, 245, 249, 0.4) !important; }
+:root[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; }
+
+:root[data-theme="light"] .text-slate-200 { color: #0f172a !important; }
+:root[data-theme="light"] .text-slate-300 { color: #1e293b !important; }
+:root[data-theme="light"] .text-slate-400 { color: #334155 !important; }
+:root[data-theme="light"] .text-slate-500 { color: #475569 !important; }
+:root[data-theme="light"] .text-slate-600 { color: #475569 !important; }
+:root[data-theme="light"] .text-slate-700 { color: #334155 !important; }
+:root[data-theme="light"] .text-slate-800 { color: #0f172a !important; }
+
+:root[data-theme="light"] .border-slate-800 { border-color: #e2e8f0 !important; }
+:root[data-theme="light"] .border-slate-700 { border-color: #e2e8f0 !important; }
+:root[data-theme="light"] .border-slate-600 { border-color: #cbd5e1 !important; }
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--app-scroll-track);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--app-scroll-thumb);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-in {
+  animation-duration: 0.3s;
+  animation-fill-mode: both;
+}
+.fade-in {
+  animation-name: fade-in;
+}

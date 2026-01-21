@@ -1,0 +1,218 @@
+
+import { Question, ExamReport, ExamConfig } from "../types";
+import { DEFAULT_CONFIG, DEFAULT_QUESTIONS } from "../constants";
+import { createClient } from '@supabase/supabase-js';
+
+// TODO: Replace these with your actual Supabase Project URL and Anon Key
+// You can get these from your Supabase Dashboard -> Settings -> API
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://yzuhyzdjhffimgufddsr.supabase.co";
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "sb_publishable_oadXrPeC0YFrWlFcklnhFg_g0CFkR0X";
+
+// Initialize Supabase client
+const isConfigured = SUPABASE_URL !== "https://your-project.supabase.co";
+const supabase = isConfigured ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+export interface CloudResult {
+  success: boolean;
+  error?: string;
+  url?: string;
+}
+
+export const cloudService = {
+  /**
+   * Fetch full exam config from Supabase DB
+   */
+  fetchExamConfig: async (): Promise<ExamConfig | null> => {
+    if (!supabase) {
+      console.warn("Supabase not configured, using local defaults.");
+      return null;
+    }
+
+    try {
+      // Assuming a table 'question_bank' (keeping name for compat) with a 'data' column
+      const { data, error } = await supabase
+        .from('question_bank')
+        .select('data')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (!data || !data.data) {
+        console.log("Cloud: No config found in DB.");
+        return null;
+      }
+
+      // Backward compatibility: If data is just an array of questions, wrap it
+      if (Array.isArray(data.data)) {
+          return {
+              ...DEFAULT_CONFIG,
+              questionBank: data.data as Question[]
+          };
+      }
+
+      return data.data as ExamConfig;
+    } catch (e) {
+      console.error("Cloud fetch error:", e);
+      return null;
+    }
+  },
+
+  /**
+   * Save full exam config to Supabase DB
+   */
+  saveExamConfig: async (config: ExamConfig): Promise<CloudResult> => {
+    if (!supabase) {
+      console.warn("Supabase not configured, saving to localStorage only.");
+      localStorage.setItem("cloud_exam_config_backup", JSON.stringify(config));
+      return { success: false, error: "Supabase not configured" };
+    }
+
+    try {
+      // 1. Insert a new record with the entire config
+      const { error } = await supabase
+        .from('question_bank')
+        .insert([{ data: config }]);
+
+      if (error) throw error;
+      
+      console.log("Cloud: Exam configuration synced.");
+
+      // 2. Auto-Cleanup: Keep only the latest 10 versions
+      const { data: oldRecords } = await supabase
+        .from('question_bank')
+        .select('id')
+        .order('updated_at', { ascending: false })
+        .range(10, 50);
+      
+      if (oldRecords && oldRecords.length > 0) {
+        const idsToDelete = oldRecords.map(r => r.id);
+        await supabase
+          .from('question_bank')
+          .delete()
+          .in('id', idsToDelete);
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.error("Cloud save error:", e);
+      return { success: false, error: e.message || "Unknown error" };
+    }
+  },
+
+  /**
+   * Upload an image asset for a question
+   */
+  uploadImage: async (file: File): Promise<CloudResult> => {
+    if (!supabase) {
+      return { success: false, error: "未配置 Supabase，无法上传图片" };
+    }
+
+    try {
+      // FORCE SAFE FILENAME: Use numeric timestamp + random string to avoid Chinese char issues in URL
+      const fileExt = file.name.split('.').pop() || 'png';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `questions/${fileName}`;
+
+      console.log(`Uploading ${file.name} as ${filePath}`);
+
+      // Upload to 'exam-assets' bucket
+      const { error: uploadError } = await supabase
+        .storage
+        .from('exam-assets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error("Supabase Upload Error:", uploadError);
+        if (uploadError.message.includes("Bucket not found")) {
+            return { success: false, error: "请在 Supabase 创建名为 'exam-assets' 的公开存储桶" };
+        }
+        if (uploadError.message.includes("row-level security") || uploadError.message.includes("violates row-level security policy")) {
+            return { success: false, error: "权限不足：请在 Supabase Storage 检查 'exam-assets' 的 RLS 策略 (需允许 public insert)" };
+        }
+        throw uploadError;
+      }
+
+      // Get Public URL
+      const { data: { publicUrl } } = supabase
+        .storage
+        .from('exam-assets')
+        .getPublicUrl(filePath);
+
+      console.log("Image available at:", publicUrl);
+
+      return { success: true, url: publicUrl };
+
+    } catch (e: any) {
+      console.error("Image upload error:", e);
+      return { success: false, error: e.message || "上传失败 (请检查服务器 RLS 策略)" };
+    }
+  },
+
+  /**
+   * Upload exam report
+   */
+  uploadExamReport: async (studentId: string, filename: string, txtContent: string, jsonReport: ExamReport): Promise<CloudResult> => {
+    // Always save locally as backup first
+    const key = `cloud_report_${studentId}_${Date.now()}`;
+    try {
+      localStorage.setItem(key, JSON.stringify(jsonReport));
+    } catch (e) {
+      console.warn("Local backup failed", e);
+    }
+
+    if (!supabase) {
+      console.warn("Supabase not configured, mocking upload.");
+      await new Promise(r => setTimeout(r, 1000));
+      return { success: false, error: "Supabase not configured" };
+    }
+
+    try {
+      // 1. Upload TXT File to Storage
+      const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+      // Sanitize report filename
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = `${studentId}/${Date.now()}_${sanitizedFilename}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase
+        .storage
+        .from('exam-reports')
+        .upload(filePath, blob, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get Public URL
+      const { data: { publicUrl } } = supabase
+        .storage
+        .from('exam-reports')
+        .getPublicUrl(filePath);
+
+      // 2. Insert Record into DB
+      const { error: dbError } = await supabase
+        .from('exam_reports')
+        .insert([{
+          student_id: studentId,
+          student_name: jsonReport.studentName || "Unknown",
+          score: jsonReport.totalScore,
+          report_url: publicUrl,
+          report_json: jsonReport
+        }]);
+
+      if (dbError) throw dbError;
+
+      console.log("Cloud: Upload successful. URL:", publicUrl);
+      return { success: true };
+
+    } catch (e: any) {
+      console.error("Cloud upload error:", e);
+      return { success: false, error: e.message || "Unknown error" };
+    }
+  }
+};
