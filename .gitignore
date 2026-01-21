@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+release/
+electron/ime-helper/bin/
+electron/ime-helper/obj/
 
 # Editor directories and files
 .vscode/*
