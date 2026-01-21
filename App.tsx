@@ -205,7 +205,7 @@ export default function App() {
       <div className="absolute top-4 right-4 z-20">
         <button
           onClick={toggleTheme}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/70 border border-slate-700 rounded-lg text-slate-300 hover:text-white hover:border-slate-600 transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
           title={theme === 'light' ? '切换到深色' : '切换到浅色'}
         >
           {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -250,7 +250,7 @@ export default function App() {
                    <div className="bg-blue-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
                      <GraduationCap className="w-8 h-8 text-blue-400" />
                    </div>
-                   <GraduationCap className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-blue-900/10 transition-colors transform rotate-12" />
+                   <GraduationCap className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-blue-900/10 transition-colors transform rotate-12 landing-card-watermark" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">我是学生</h2>
                 <p className="text-slate-400 text-sm mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
@@ -267,7 +267,7 @@ export default function App() {
                    <div className="bg-purple-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
                      <Monitor className="w-8 h-8 text-purple-400" />
                    </div>
-                   <Monitor className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-purple-900/10 transition-colors transform -rotate-6" />
+                   <Monitor className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-purple-900/10 transition-colors transform -rotate-6 landing-card-watermark" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">我是老师</h2>
                 <p className="text-slate-400 text-sm mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>
@@ -281,7 +281,7 @@ export default function App() {
             <div className="z-20 mt-4">
                <button 
                  onClick={handleSystemExit}
-                 className="flex items-center gap-2 text-slate-600 hover:text-red-400/80 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
+                 className="flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
                >
                  <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
                  <span className="text-sm font-medium">退出系统</span>

@@ -526,8 +526,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
                                 )}
                               </div>
                               <div>
-                                <span className="text-slate-500 font-bold text-xs">初始代码</span>
-                                <pre className="bg-black/30 p-3 rounded border border-slate-800 mt-1 font-mono text-xs text-green-400 overflow-x-auto">{q.template}</pre>
+                                <span className="text-slate-400 text-xs font-medium">代码模板</span>
+                                <pre className="bg-slate-950 p-3 rounded border border-slate-700 mt-1 font-mono text-xs text-green-400 overflow-x-auto">{q.template}</pre>
                               </div>
                             </div>
                           )}

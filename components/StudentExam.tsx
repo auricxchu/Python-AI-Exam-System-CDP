@@ -484,7 +484,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       {/* Sidebar */}
       <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
         {/* Exam Title Section */}
-        <div className="p-4 border-b border-slate-800 bg-slate-950/30">
+        <div className="p-4 border-b border-slate-800 bg-slate-950/30 exam-title-bar">
             <h3 className="font-bold text-white text-sm leading-tight text-center">{config.examTitle}</h3>
         </div>
 
