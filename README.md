@@ -37,7 +37,7 @@ A desktop-first exam system built with Electron + Vite + React. Teachers manage 
 ## Setup / Æô¶¯
 
 1. Install dependencies: `npm install`
-2. Configure `.env` (see below)
+2. Copy `.env.example` to `.env` and configure it (see below)
 3. Run the app: `npm run dev`
 
 1. °²×°ÒÀÀµ£º`npm install`
