@@ -3,9 +3,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, Plus, Trash2, Pencil, LogOut, Check, AlertTriangle, 
   Database, Filter, ChevronRight, ChevronDown, Cloud, CloudUpload, RefreshCw, Loader2, Key,
-  FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon
+  FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon, Wand2
 } from 'lucide-react';
 import { ExamConfig, Question, Difficulty } from '../types';
+import { AiProvider, generateQuestion } from '../services/aiService';
 import { Button, Input, Badge } from './ui';
 import Modal from './Modal';
 import ImageModal from './ImageModal';
@@ -20,9 +21,10 @@ interface TeacherDashboardProps {
   onExit: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  aiProvider: AiProvider;
 }
 
-const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateConfig, onExit, theme, onToggleTheme }) => {
+const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateConfig, onExit, theme, onToggleTheme, aiProvider }) => {
   // State
   const [localConfig, setLocalConfig] = useState<ExamConfig>(config);
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
@@ -31,6 +33,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatusText, setSyncStatusText] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const aiPromptRef = useRef<HTMLTextAreaElement>(null);
   
   // Edit/Add Question State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -88,6 +93,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
       return () => clearTimeout(timer);
     }
   }, [notif]);
+
+  useEffect(() => {
+    const el = aiPromptRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    const nextHeight = Math.min(el.scrollHeight, 140);
+    el.style.height = `${nextHeight}px`;
+  }, [aiPrompt]);
 
   // Handlers
   const handleSaveConfig = async () => {
@@ -214,6 +227,30 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
     }
   };
 
+  const handleAiGenerate = async () => {
+    const trimmed = aiPrompt.trim();
+    if (!trimmed) {
+      setNotif({ msg: "请输入 AI 指令", type: "warning" });
+      return;
+    }
+    setAiGenerating(true);
+    const result = await generateQuestion(trimmed, questionForm, aiProvider);
+    setAiGenerating(false);
+    if (!result) {
+      setNotif({ msg: "AI 生成失败，请稍后重试", type: "warning" });
+      return;
+    }
+    setQuestionForm(prev => ({
+      ...prev,
+      title: result.title,
+      description: result.description,
+      difficulty: result.difficulty,
+      template: result.template
+    }));
+    setAiPrompt("");
+    setNotif({ msg: "AI 已生成题目草稿", type: "success" });
+  };
+
   const startEdit = (q: Question) => {
     setQuestionForm(q);
     setEditingId(q.id);
@@ -337,7 +374,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
              <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
            </button>
-           <button onClick={onExit} className="hover:text-white flex items-center gap-1 transition-colors"><LogOut className="w-4 h-4"/> 返回</button>
+           <button onClick={onExit} className="teacher-return hover:text-white flex items-center gap-1 transition-colors"><LogOut className="w-4 h-4"/> 返回</button>
          </div>
       </div>
 
@@ -494,8 +531,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                              <button onClick={(e) => { e.stopPropagation(); startEdit(q); }} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-slate-800 rounded transition-colors"><Pencil className="w-4 h-4"/></button>
-                              <button onClick={(e) => { e.stopPropagation(); setDeleteId(q.id); }} className="p-2 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"><Trash2 className="w-4 h-4"/></button>
+                              <button onClick={(e) => { e.stopPropagation(); startEdit(q); }} className="teacher-action-edit p-2 text-slate-500 hover:text-blue-400 hover:bg-slate-800 rounded transition-colors"><Pencil className="w-4 h-4"/></button>
+                              <button onClick={(e) => { e.stopPropagation(); setDeleteId(q.id); }} className="teacher-action-delete p-2 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"><Trash2 className="w-4 h-4"/></button>
                             </div>
                           </div>
                           {expandedId === q.id && (
@@ -543,6 +580,31 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
               {activeTab === 'add' && (
                 <div className="flex flex-col h-full gap-4">
                    <div className="shrink-0 space-y-3">
+                        <div>
+                            <label className="block text-slate-400 text-xs mb-2 font-medium">{'\u0041\u0049 \u6307\u4ee4'}</label>
+                            <div className="ai-prompt-row">
+                                <textarea
+                                    ref={aiPromptRef}
+                                    rows={1}
+                                    className="ai-prompt-input"
+                                    value={aiPrompt}
+                                    onChange={e => setAiPrompt(e.target.value)}
+                                    placeholder={'\u4f8b\u5982\uff1a\u751f\u6210\u4e00\u9053\u7b80\u5355\u6392\u5e8f\u9898 / \u96be\u4e86\u6362\u4e00\u9053 / \u6362\u6210\u8ba1\u7b97\u673a\u80cc\u666f'}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAiGenerate}
+                                    disabled={aiGenerating}
+                                    className={`ai-generate-button ${aiGenerating ? 'is-busy' : ''}`}
+                                >
+                                    <Wand2 className="w-4 h-4" />
+                                    <span>{aiGenerating ? '\u751f\u6210\u4e2d' : '\u751f\u6210'}</span>
+                                </button>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1">
+                                {'\u652f\u6301\u8fde\u7eed\u6307\u4ee4\u66f4\u65b0\uff0c\u5982\u201c\u8fd9\u9898\u96be\u4e86\u6362\u4e00\u9053\u201d'}
+                            </div>
+                        </div>
                         <div>
                             <Input label="题目名称" value={questionForm.title} onChange={e => setQuestionForm({...questionForm, title: e.target.value})} placeholder="例如: 两数之和" />
                         </div>

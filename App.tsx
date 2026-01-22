@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
-import { Code, GraduationCap, Presentation, ChevronRight, Monitor, LogOut, Key, Power, AlertCircle, Loader2, Wifi, WifiOff, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Code, GraduationCap, Presentation, ChevronRight, ChevronLeft, Monitor, LogOut, Key, Power, AlertCircle, Loader2, Wifi, WifiOff, Sun, Moon } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
 import { cloudService } from './services/cloudService';
+import { AiProvider, getAvailableProviders, testProviderConnection } from './services/aiService';
 import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
@@ -48,6 +49,26 @@ export default function App() {
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isCheckingNet, setIsCheckingNet] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AiProvider>(() => {
+    const stored = localStorage.getItem('app_ai_provider') as AiProvider | null;
+    return stored || 'auto';
+  });
+  const [providerStatus, setProviderStatus] = useState<Record<AiProvider, 'idle' | 'checking' | 'ok' | 'fail'>>({
+    auto: 'idle',
+    deepseek: 'idle',
+    gemini: 'idle',
+    openai: 'idle',
+    qwen: 'idle',
+    moonshot: 'idle'
+  });
+  const [isCheckingProviders, setIsCheckingProviders] = useState(false);
+  const modelWheelRef = useRef<HTMLDivElement | null>(null);
+  const modelScrollRaf = useRef<number | null>(null);
+  const aiProviderRef = useRef<AiProvider>(aiProvider);
+  const [aiGuardOpen, setAiGuardOpen] = useState(false);
+  const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
+  const [aiGuardMessage, setAiGuardMessage] = useState("");
+
 
   // Student State
   const [studentUser, setStudentUser] = useState<UserProfile | null>(null);
@@ -69,6 +90,182 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('app_theme', theme);
   }, [theme]);
+  useEffect(() => {
+    localStorage.setItem('app_ai_provider', aiProvider);
+  }, [aiProvider]);
+
+  useEffect(() => {
+    aiProviderRef.current = aiProvider;
+  }, [aiProvider]);
+
+  const providerOptions: { id: AiProvider; label: string; desc: string }[] = [
+    { id: 'auto', label: '\u9ed8\u8ba4', desc: '\u81ea\u52a8\u9009\u62e9\u53ef\u7528\u6a21\u578b' },
+    { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
+    { id: 'openai', label: 'OpenAI', desc: 'gpt-4o-mini' },
+    { id: 'qwen', label: '\u901a\u4e49\u5343\u95ee', desc: 'qwen-plus' },
+    { id: 'moonshot', label: 'Moonshot', desc: 'moonshot-v1-8k' },
+    { id: 'gemini', label: 'Gemini', desc: 'gemini-3-pro-preview' }
+  ];
+
+  const modelSelectorCopy = {
+    title: '\u6a21\u578b\u9009\u62e9',
+    availability: '\u53ef\u7528\u6027',
+    recheck: '\u68c0\u6d4b',
+    checking: '\u68c0\u6d4b\u4e2d...',
+    configuredSuffix: ' \u4e2a\u5df2\u914d\u7f6e',
+    statusOk: '\u53ef\u7528',
+    statusFail: '\u4e0d\u53ef\u7528',
+    statusChecking: '\u68c0\u6d4b\u4e2d...',
+    statusUnknown: '\u672a\u68c0\u6d4b'
+  };
+
+
+  const checkProviders = async () => {
+    if (isCheckingProviders) return;
+    setIsCheckingProviders(true);
+    const targets: AiProvider[] = ['deepseek', 'openai', 'qwen', 'moonshot', 'gemini'];
+    setProviderStatus(prev => {
+      const next = { ...prev };
+      targets.forEach(key => { next[key] = 'checking'; });
+      return next;
+    });
+
+    const results = await Promise.all(
+      targets.map(async (key) => ({ key, ok: await testProviderConnection(key) }))
+    );
+
+    setProviderStatus(prev => {
+      const next = { ...prev };
+      results.forEach(({ key, ok }) => {
+        next[key] = ok ? 'ok' : 'fail';
+      });
+      return next;
+    });
+    setIsCheckingProviders(false);
+  };
+
+  useEffect(() => {
+    if (mode === 'landing') {
+      checkProviders();
+    }
+  }, [mode]);
+
+  const scrollModelWheel = (direction: 'left' | 'right') => {
+    const el = modelWheelRef.current;
+    if (!el) return;
+    const items = Array.from(el.querySelectorAll<HTMLButtonElement>('[data-provider]'));
+    if (!items.length) return;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    items.forEach((item, index) => {
+      const itemRect = item.getBoundingClientRect();
+      const itemCenter = itemRect.left + itemRect.width / 2;
+      const distance = Math.abs(itemCenter - centerX);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+    const nextIndex = direction === 'left'
+      ? Math.max(0, closestIndex - 1)
+      : Math.min(items.length - 1, closestIndex + 1);
+    items[nextIndex].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  };
+
+  const updateCenterSelection = () => {
+    const el = modelWheelRef.current;
+    if (!el) return;
+    const items = Array.from(el.querySelectorAll<HTMLButtonElement>('[data-provider]'));
+    if (!items.length) return;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    let closest: { id: AiProvider; distance: number } | undefined;
+    items.forEach((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const itemCenter = itemRect.left + itemRect.width / 2;
+      const distance = Math.abs(itemCenter - centerX);
+      const id = item.dataset.provider as AiProvider;
+      if (!closest || distance < closest.distance) {
+        closest = { id, distance };
+      }
+    });
+    if (closest?.id && closest.id !== aiProviderRef.current) {
+      setAiProvider(closest.id);
+    }
+  };
+
+  useEffect(() => {
+    if (mode !== 'landing') return;
+    const el = modelWheelRef.current;
+    if (!el) return;
+    let idleTimer: number | undefined;
+    const onScroll = () => {
+      if (idleTimer) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        updateCenterSelection();
+      }, 120);
+    };
+    const onResize = () => updateCenterSelection();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+    updateCenterSelection();
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+      if (idleTimer) window.clearTimeout(idleTimer);
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'landing') return;
+    const el = modelWheelRef.current;
+    if (!el) return;
+    const item = el.querySelector<HTMLButtonElement>(`[data-provider="${aiProviderRef.current}"]`);
+    if (item) {
+      item.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+    }
+  }, [mode]);
+
+  const getAiAvailability = () => {
+    const available = getAvailableProviders();
+    if (aiProviderRef.current === 'auto') {
+      return { ok: available.length > 0, reason: available.length ? '' : '当前未配置任何可用的 AI 模型。' };
+    }
+    if (!available.includes(aiProviderRef.current as Exclude<AiProvider, 'auto'>)) {
+      return { ok: false, reason: '当前选中的 AI 模型未配置或不可用。' };
+    }
+    if (providerStatus[aiProviderRef.current] === 'fail') {
+      return { ok: false, reason: '当前选中的 AI 模型不可用。' };
+    }
+    return { ok: true, reason: '' };
+  };
+
+  const requestEnterMode = (nextMode: AppMode) => {
+    if (nextMode !== 'student_login' && nextMode !== 'teacher_login') {
+      setMode(nextMode);
+      return;
+    }
+    const { ok, reason } = getAiAvailability();
+    if (ok) {
+      setMode(nextMode);
+      return;
+    }
+    setAiGuardNextMode(nextMode);
+    setAiGuardMessage(`${reason}这可能导致批改/生成不可用，确定继续吗？`);
+    setAiGuardOpen(true);
+  };
+
+  const confirmEnterMode = () => {
+    if (aiGuardNextMode) {
+      setMode(aiGuardNextMode);
+    }
+    setAiGuardNextMode(null);
+    setAiGuardOpen(false);
+  };
+
+  
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
@@ -176,6 +373,7 @@ export default function App() {
         onExit={() => setMode('landing')}
         theme={theme}
         onToggleTheme={toggleTheme}
+        aiProvider={aiProvider}
       />
     );
   }
@@ -190,16 +388,18 @@ export default function App() {
         onSystemExit={handleSystemExit}
         theme={theme}
         onToggleTheme={toggleTheme}
+        aiProvider={aiProvider}
       />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans text-slate-200">
+    <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans text-slate-200">
       {/* Background FX */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-         <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] bg-indigo-500/10 rounded-full blur-[120px]" />
-         <div className="absolute -bottom-[20%] -right-[10%] w-[70%] h-[70%] bg-purple-500/10 rounded-full blur-[120px]" />
+         <div className="landing-orb landing-orb--a" />
+         <div className="landing-orb landing-orb--b" />
+         <div className="landing-orb landing-orb--c" />
       </div>
 
       <div className="absolute top-4 right-4 z-20">
@@ -228,22 +428,118 @@ export default function App() {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={aiGuardOpen}
+        onClose={() => setAiGuardOpen(false)}
+        title="AI 模型不可用"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAiGuardOpen(false)}>取消</Button>
+            <Button onClick={confirmEnterMode}>继续</Button>
+          </>
+        }
+      >
+        <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
+      </Modal>
+
       <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
         {mode === 'landing' && (
           <>
-            <div className="bg-slate-800/50 p-6 rounded-2xl mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
+            <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-6 rounded-2xl mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
                <Code className="w-12 h-12 text-blue-400" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 text-center tracking-tight drop-shadow-lg">
+            <h1 className="landing-reveal landing-delay-2 text-4xl md:text-5xl font-bold text-white mb-3 text-center tracking-tight drop-shadow-lg">
               Python 智能考试系统
             </h1>
-            <p className="text-slate-400 text-lg mb-16 text-center max-w-2xl">
+            <p className="landing-reveal landing-delay-3 text-slate-400 text-lg mb-16 text-center max-w-2xl">
               基于 AI 的自动化测评与管理平台
             </p>
+            <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-10">
+              <div className="model-picker">
+                <div className="model-picker__header">
+                  <div className="model-picker__title">{modelSelectorCopy.title}</div>
+                  <button
+                    type="button"
+                    onClick={checkProviders}
+                    className="model-picker__check"
+                  >
+                    {isCheckingProviders ? modelSelectorCopy.checking : modelSelectorCopy.recheck}
+                  </button>
+                </div>
 
-            <div className="grid md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
+                <div className="model-picker__row">
+                  <button
+                    type="button"
+                    className="model-picker__arrow"
+                    onClick={() => scrollModelWheel('left')}
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="model-wheel" ref={modelWheelRef} role="listbox" aria-label="AI models">
+                    {providerOptions.map(option => {
+                      const status = providerStatus[option.id];
+                      const dotClass = option.id === 'auto'
+                        ? 'model-dot--auto'
+                        : status === 'ok'
+                          ? 'model-dot--ok'
+                          : status === 'fail'
+                            ? 'model-dot--fail'
+                            : status === 'checking'
+                              ? 'model-dot--checking'
+                              : 'model-dot--idle';
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          role="option"
+                          aria-selected={aiProvider === option.id}
+                          data-provider={option.id}
+                          onClick={(event) => {
+                            const target = event.currentTarget;
+                            target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                          }}
+                          className={`model-wheel__item ${aiProvider === option.id ? 'is-active' : ''}`}
+                        >
+                          <span className={`model-dot ${dotClass}`} />
+                          <span className="model-wheel__label">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="model-picker__arrow"
+                    onClick={() => scrollModelWheel('right')}
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="model-picker__meta">
+                  <span className="model-picker__meta-name">
+                    {providerOptions.find(option => option.id === aiProvider)?.desc}
+                  </span>
+                  <span className="model-picker__meta-status">
+                    {modelSelectorCopy.availability} · {aiProvider === 'auto'
+                      ? `${getAvailableProviders().length}${modelSelectorCopy.configuredSuffix}`
+                      : providerStatus[aiProvider] === 'ok'
+                        ? modelSelectorCopy.statusOk
+                        : providerStatus[aiProvider] === 'fail'
+                          ? modelSelectorCopy.statusFail
+                          : providerStatus[aiProvider] === 'checking'
+                            ? modelSelectorCopy.statusChecking
+                            : modelSelectorCopy.statusUnknown}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
               <button 
-                onClick={() => setMode('student_login')}
+                onClick={() => requestEnterMode('student_login')}
                 className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
               >
                 <div className="flex justify-between items-start mb-8">
@@ -260,7 +556,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => setMode('teacher_login')}
+                onClick={() => requestEnterMode('teacher_login')}
                 className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
               >
                 <div className="flex justify-between items-start mb-8">
@@ -278,10 +574,10 @@ export default function App() {
             </div>
             
             {/* System Exit Button (Flow Layout, No Overlap) */}
-            <div className="z-20 mt-4">
+            <div className="landing-reveal landing-delay-6 z-20 mt-4">
                <button 
                  onClick={handleSystemExit}
-                 className="flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
+                 className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
                >
                  <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
                  <span className="text-sm font-medium">退出系统</span>

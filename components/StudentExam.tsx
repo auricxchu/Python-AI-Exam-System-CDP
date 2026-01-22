@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Play, Send, Clock, Flag, FileText, CheckCircle, Brain, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Keyboard, Type, ZoomIn, Command, Info, Sun, Moon
+  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Keyboard, Type, ZoomIn, Command, Info, Sun, Moon
 } from 'lucide-react';
 import { ExamConfig, Question, GradingResult, UserProfile, ExamReport } from '../types';
 import { Button } from './ui';
@@ -10,7 +10,7 @@ import TerminalOutput from './TerminalOutput';
 import Modal from './Modal';
 import ImageModal from './ImageModal'; // Import ImageModal
 import CachedImage from './CachedImage';
-import { gradeQuestion } from '../services/geminiService';
+import { gradeQuestion, AiProvider, resolveProvider } from '../services/aiService';
 import { runPythonCodeLocal, initPyodide } from '../services/pyodideService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
@@ -23,9 +23,10 @@ interface StudentExamProps {
   onSystemExit: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  aiProvider: AiProvider;
 }
 
-const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onExit, onSystemExit, theme, onToggleTheme }) => {
+const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onExit, onSystemExit, theme, onToggleTheme, aiProvider }) => {
   // State
   const [currentIdx, setCurrentIdx] = useState(0);
   const [timeLeft, setTimeLeft] = useState(config.duration * 60);
@@ -44,6 +45,24 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [results, setResults] = useState<Record<string, GradingResult>>({});
   const [finalScore, setFinalScore] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string} | null>(null);
+  const [examFinishedAt, setExamFinishedAt] = useState<string | null>(null);
+  const [usedProvider, setUsedProvider] = useState<AiProvider>('auto');
+  const providerLabel = (value: AiProvider) => {
+    switch (value) {
+      case 'deepseek':
+        return 'Deepseek';
+      case 'openai':
+        return 'OpenAI';
+      case 'qwen':
+        return '\u901a\u4e49\u5343\u95ee';
+      case 'moonshot':
+        return 'Moonshot';
+      case 'gemini':
+        return 'Gemini';
+      default:
+        return '\u9ed8\u8ba4';
+    }
+  };
   
   // UI Modals
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
@@ -235,16 +254,17 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
   };
 
-  const generateTxtReport = (score: number, gradingResults: Record<string, GradingResult>) => {
+  const generateTxtReport = (score: number, gradingResults: Record<string, GradingResult>, startTime: string, endTime: string) => {
     const lines = [];
     lines.push("================================================================");
-    lines.push(`               PYTHON 智能考试系统 - 考试报告`);
+    lines.push(`               PYTHON \u667a\u80fd\u8003\u8bd5\u7cfb\u7edf - \u8003\u8bd5\u62a5\u544a`);
     lines.push("================================================================");
-    lines.push(`考生姓名: ${user.name}`);
-    lines.push(`考生学号: ${user.studentId}`);
-    lines.push(`考试科目: ${config.examTitle}`);
-    lines.push(`交卷时间: ${new Date().toLocaleString()}`);
-    lines.push(`最终得分: ${score} 分`);
+    lines.push(`\u8003\u751f\u59d3\u540d: ${user.name}`);
+    lines.push(`\u8003\u751f\u5b66\u53f7: ${user.studentId}`);
+    lines.push(`\u8003\u8bd5\u79d1\u76ee: ${config.examTitle}`);
+    lines.push(`\u5f00\u59cb\u65f6\u95f4: ${new Date(startTime).toLocaleString()}`);
+    lines.push(`\u5b8c\u6210\u65f6\u95f4: ${new Date(endTime).toLocaleString()}`);
+    lines.push(`\u6700\u7ec8\u5f97\u5206: ${score} \u5206`);
     lines.push("================================================================\n");
 
     questions.forEach((q, idx) => {
@@ -267,6 +287,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const finishExam = async () => {
     setSubmitModalOpen(false);
     setIsSubmitting(true);
+    const resolvedProvider = resolveProvider(aiProvider);
+    setUsedProvider(resolvedProvider);
     
     // Step 1: AI Grading
     setSubmissionStep("grading");
@@ -278,7 +300,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           result: { passed: false, score: 0, logic_feedback: "未作答", quality_feedback: "N/A", suggestion: "下次尝试一下吧。" } as GradingResult 
         };
       }
-      const result = await gradeQuestion(q.title, q.description, code);
+      const result = await gradeQuestion(q.title, q.description, code, resolvedProvider);
       return { id: q.id, result };
     });
 
@@ -301,7 +323,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     setSubmissionStep("generating");
     await new Promise(r => setTimeout(r, 500)); 
     
-    const txtContent = generateTxtReport(finalCalculatedScore, newResults);
+    const finishedAt = new Date().toISOString();
+    setExamFinishedAt(finishedAt);
+    const txtContent = generateTxtReport(finalCalculatedScore, newResults, user.joinedAt, finishedAt);
     const filename = `${user.name}_${user.studentId}_ExamReport.txt`;
     
     // Step 3: Cloud Upload
@@ -310,6 +334,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const reportData: ExamReport = {
       timestamp: new Date().toISOString(),
       totalScore: finalCalculatedScore,
+      examTitle: config.examTitle,
+      startTime: user.joinedAt,
+      endTime: finishedAt,
       studentName: user.name,
       studentId: user.studentId,
       results: newResults,
@@ -377,12 +404,23 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
            <div className="absolute -bottom-[20%] -right-[10%] w-[70%] h-[70%] bg-purple-500/10 rounded-full blur-[120px]" />
         </div>
 
+        <div className="absolute top-4 right-4 z-20">
+          <button
+            onClick={onToggleTheme}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
+            title={theme === 'light' ? '\u5207\u6362\u5230\u6df1\u8272' : '\u5207\u6362\u5230\u6d45\u8272'}
+          >
+            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            <span className="text-xs font-medium">{theme === 'light' ? '\u6df1\u8272' : '\u6d45\u8272'}</span>
+          </button>
+        </div>
+
         {/* Info Modal for Exit Warning */}
         <Modal 
           isOpen={infoModalOpen} 
           onClose={() => setInfoModalOpen(false)} 
-          title="系统提示"
-          footer={<Button onClick={() => setInfoModalOpen(false)}>知道了</Button>}
+          title={'\u7cfb\u7edf\u63d0\u793a'}
+          footer={<Button onClick={() => setInfoModalOpen(false)}>{'\u77e5\u9053\u4e86'}</Button>}
         >
           <div className="flex items-start gap-4">
              <div className="p-2 bg-slate-700 rounded-full shrink-0">
@@ -394,27 +432,58 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
         <div className="max-w-4xl w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-2xl overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500">
           <div className="bg-slate-950/50 p-8 text-center border-b border-slate-800">
-             <div className="inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
-               <Brain className="w-12 h-12 text-blue-400" />
+             <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
+               <FileCheck className="w-12 h-12 text-blue-400" />
              </div>
-             <h2 className="text-3xl font-bold text-white mb-2">考试结束</h2>
-             <p className="text-slate-400">最终得分</p>
+             <h2 className="text-3xl font-bold text-white mb-2">{'\u8003\u8bd5\u6210\u7ee9\u5355'}</h2>
+             <p className="text-slate-400">{'\u8003\u8bd5\u4fe1\u606f\u4e0e\u6700\u7ec8\u5f97\u5206'}</p>
              <div className="text-6xl font-bold text-blue-400 mt-2">{finalScore}</div>
-             
+
+             <div className="report-info-grid">
+                <div className="report-info-col">
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u8003\u8bd5\u540d\u79f0'}</span>
+                    <span className="report-info-value">{config.examTitle}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u8003\u751f\u59d3\u540d'}</span>
+                    <span className="report-info-value">{user.name}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u8003\u751f\u5b66\u53f7'}</span>
+                    <span className="report-info-value">{user.studentId}</span>
+                  </div>
+                </div>
+                <div className="report-info-col">
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u5f00\u59cb\u8003\u8bd5\u65f6\u95f4'}</span>
+                    <span className="report-info-value">{new Date(user.joinedAt).toLocaleString()}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u5b8c\u6210\u8003\u8bd5\u65f6\u95f4'}</span>
+                    <span className="report-info-value">{examFinishedAt ? new Date(examFinishedAt).toLocaleString() : new Date().toLocaleString()}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">{'\u6279\u6539\u6a21\u578b'}</span>
+                    <span className="report-info-value">{providerLabel(usedProvider)}</span>
+                  </div>
+                </div>
+             </div>
+
              <div className="flex justify-center gap-4 mt-6">
                 {uploadStatus?.success ? (
                   <div className="flex items-center gap-2 text-xs bg-blue-900/20 text-blue-400 px-3 py-1.5 rounded-full border border-blue-900/50">
-                     <CloudUpload className="w-3 h-3"/> 成绩已上传云端
+                     <CloudUpload className="w-3 h-3"/> {'\u6210\u7ee9\u5df2\u4e0a\u4f20\u4e91\u7aef'}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-xs bg-orange-900/20 text-orange-400 px-3 py-1.5 rounded-full border border-orange-900/50" title={uploadStatus?.error}>
-                     <AlertTriangle className="w-3 h-3"/> 云端上传失败 (已存本地)
+                     <AlertTriangle className="w-3 h-3"/> {'\u4e91\u7aef\u4e0a\u4f20\u5931\u8d25\uff08\u5df2\u5b58\u672c\u5730\uff09'}
                   </div>
                 )}
              </div>
           </div>
           
-          <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar bg-slate-900/30">
+<div className="p-6 space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar bg-slate-900/30">
             {questions.map((q, idx) => {
               const res = results[q.id];
               const pts = Math.round((res.score / 100) * (q.points || 0));

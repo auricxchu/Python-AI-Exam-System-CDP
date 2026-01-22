@@ -43,6 +43,9 @@ export interface GradingResult {
 export interface ExamReport {
   timestamp: string;
   totalScore: number;
+  examTitle: string;
+  startTime: string;
+  endTime: string;
   studentName: string;
   studentId: string;
   results: Record<string, GradingResult>;
