@@ -19,13 +19,27 @@ Description: ${description}
 Student Code:
 ${code}`;
 
-export type AiProvider = "auto" | "deepseek" | "gemini" | "openai" | "qwen" | "moonshot";
+export type AiProvider = "deepseek" | "gemini" | "openai" | "qwen" | "moonshot";
 
 type ProviderStatus = "ok" | "fail";
 
 const hasKey = (val?: string) => !!val && val.trim().length > 0;
 
-const providerKeys = {
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 6000): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<T>([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const providerKeys: Record<AiProvider, string | undefined> = {
   deepseek: process.env.DEEPSEEK_API_KEY,
   gemini: process.env.API_KEY,
   openai: process.env.OPENAI_API_KEY,
@@ -33,15 +47,8 @@ const providerKeys = {
   moonshot: process.env.MOONSHOT_API_KEY
 };
 
-export const getAvailableProviders = (): Exclude<AiProvider, "auto">[] => {
-  return (Object.keys(providerKeys) as Exclude<AiProvider, "auto">[]).filter((key) => hasKey(providerKeys[key]));
-};
-
-export const resolveProvider = (provider: AiProvider): AiProvider => {
-  if (provider !== "auto") return provider;
-  const available = getAvailableProviders();
-  if (!available.length) return "auto";
-  return available[Math.floor(Math.random() * available.length)];
+export const getAvailableProviders = (): AiProvider[] => {
+  return (Object.keys(providerKeys) as AiProvider[]).filter((key) => hasKey(providerKeys[key]));
 };
 
 const normalizeDifficulty = (input: string | undefined): Difficulty => {
@@ -94,10 +101,9 @@ const requestOpenAIJson = async (
 export const generateQuestion = async (
   instruction: string,
   current: Partial<Question>,
-  provider: AiProvider = "auto"
+  provider: AiProvider = "deepseek"
 ): Promise<GeneratedQuestion | null> => {
-  const resolved = resolveProvider(provider);
-  if (resolved === "auto") return null;
+  const resolved = provider;
 
   const systemPrompt = `你是 Python 考试题目生成器。仅返回 JSON，不要输出 Markdown。
 JSON 字段必须包含：
@@ -229,10 +235,6 @@ const pingOpenAICompatible = async (
 };
 
 export const testProviderConnection = async (provider: AiProvider): Promise<boolean> => {
-  if (provider === "auto") {
-    return getAvailableProviders().length > 0;
-  }
-
   const key = providerKeys[provider];
   if (!hasKey(key)) return false;
   const apiKey = key as string;
@@ -240,11 +242,14 @@ export const testProviderConnection = async (provider: AiProvider): Promise<bool
   if (provider === "gemini") {
     try {
       const ai = new GoogleGenAI({ apiKey });
-      await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
-        contents: "ping",
-        config: { responseMimeType: "text/plain" }
-      });
+      await withTimeout(
+        ai.models.generateContent({
+          model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+          contents: "ping",
+          config: { responseMimeType: "text/plain" }
+        }),
+        6000
+      );
       return true;
     } catch (error) {
       console.error("Gemini Ping Error:", error);
@@ -273,17 +278,17 @@ export const testProviderConnection = async (provider: AiProvider): Promise<bool
 
 /**
  * Grades the code based on the problem description.
- * Supports multiple AI providers (auto/Deepseek/OpenAI/Qwen/Moonshot/Gemini).
+ * Supports multiple AI providers (Deepseek/OpenAI/Qwen/Moonshot/Gemini).
  */
 export const gradeQuestion = async (
   title: string,
   description: string,
   code: string,
-  provider: AiProvider = "auto"
+  provider: AiProvider = "deepseek"
 ): Promise<GradingResult> => {
   const available = getAvailableProviders();
 
-  if (provider !== "auto" && !available.includes(provider as Exclude<AiProvider, "auto">)) {
+  if (!available.includes(provider)) {
     return {
       passed: false,
       score: 0,
@@ -293,8 +298,7 @@ export const gradeQuestion = async (
     };
   }
 
-  const pickRandom = (items: Exclude<AiProvider, "auto">[]) => items[Math.floor(Math.random() * items.length)];
-  const selected = provider === "auto" ? pickRandom(available) : (provider as Exclude<AiProvider, "auto">);
+  const selected = provider;
 
   if (!selected) {
     return {

@@ -35,8 +35,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
   const [syncStatusText, setSyncStatusText] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
-  const aiPromptRef = useRef<HTMLTextAreaElement>(null);
-  
+    
   // Edit/Add Question State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [questionForm, setQuestionForm] = useState<Partial<Question>>({
@@ -93,14 +92,6 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
       return () => clearTimeout(timer);
     }
   }, [notif]);
-
-  useEffect(() => {
-    const el = aiPromptRef.current;
-    if (!el) return;
-    el.style.height = "0px";
-    const nextHeight = Math.min(el.scrollHeight, 140);
-    el.style.height = `${nextHeight}px`;
-  }, [aiPrompt]);
 
   // Handlers
   const handleSaveConfig = async () => {
@@ -583,9 +574,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
                         <div>
                             <label className="block text-slate-400 text-xs mb-2 font-medium">{'\u0041\u0049 \u6307\u4ee4'}</label>
                             <div className="ai-prompt-row">
-                                <textarea
-                                    ref={aiPromptRef}
-                                    rows={1}
+                                <input type="text"
                                     className="ai-prompt-input"
                                     value={aiPrompt}
                                     onChange={e => setAiPrompt(e.target.value)}
@@ -600,9 +589,6 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
                                     <Wand2 className="w-4 h-4" />
                                     <span>{aiGenerating ? '\u751f\u6210\u4e2d' : '\u751f\u6210'}</span>
                                 </button>
-                            </div>
-                            <div className="text-[10px] text-slate-500 mt-1">
-                                {'\u652f\u6301\u8fde\u7eed\u6307\u4ee4\u66f4\u65b0\uff0c\u5982\u201c\u8fd9\u9898\u96be\u4e86\u6362\u4e00\u9053\u201d'}
                             </div>
                         </div>
                         <div>

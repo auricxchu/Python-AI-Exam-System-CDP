@@ -44,7 +44,7 @@ const TerminalOutput: React.FC<TerminalOutputProps> = ({
         <Terminal className="w-3 h-3" />
         <span>控制台输出</span>
       </div>
-      <div ref={scrollRef} className={`flex-1 p-4 overflow-y-auto font-mono whitespace-pre-wrap w-full custom-scrollbar ${isLight ? 'text-slate-800' : 'text-green-400'}`}>
+      <div ref={scrollRef} className={`flex-1 p-4 overflow-y-auto font-mono tracking-normal whitespace-pre-wrap w-full custom-scrollbar ${isLight ? 'text-slate-800' : 'text-green-400'}`}>
         {loading && !output ? (
           <div className={`flex items-center gap-2 animate-pulse ${isLight ? 'text-amber-600' : 'text-yellow-400'}`}>
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -72,7 +72,7 @@ const TerminalOutput: React.FC<TerminalOutputProps> = ({
             ref={inputRef}
             value={inputValue || ''}
             onChange={(e) => onInputChange?.(e.target.value)}
-            className={`flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-blue-500 ${isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'}`}
+            className={`flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono tracking-normal ${isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'}`}
             placeholder="请输入内容并回车..."
           />
           <button

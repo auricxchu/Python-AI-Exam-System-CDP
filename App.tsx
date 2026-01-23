@@ -51,11 +51,11 @@ export default function App() {
   const [isCheckingNet, setIsCheckingNet] = useState(false);
   const [aiProvider, setAiProvider] = useState<AiProvider>(() => {
     const stored = localStorage.getItem('app_ai_provider') as AiProvider | null;
-    return stored || 'auto';
+    const defaults: AiProvider[] = ['deepseek', 'openai', 'qwen', 'moonshot', 'gemini'];
+    return stored && defaults.includes(stored) ? stored : 'deepseek';
   });
   const [providerStatus, setProviderStatus] = useState<Record<AiProvider, 'idle' | 'checking' | 'ok' | 'fail'>>({
-    auto: 'idle',
-    deepseek: 'idle',
+        deepseek: 'idle',
     gemini: 'idle',
     openai: 'idle',
     qwen: 'idle',
@@ -99,8 +99,7 @@ export default function App() {
   }, [aiProvider]);
 
   const providerOptions: { id: AiProvider; label: string; desc: string }[] = [
-    { id: 'auto', label: '\u9ed8\u8ba4', desc: '\u81ea\u52a8\u9009\u62e9\u53ef\u7528\u6a21\u578b' },
-    { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
+        { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
     { id: 'openai', label: 'OpenAI', desc: 'gpt-4o-mini' },
     { id: 'qwen', label: '\u901a\u4e49\u5343\u95ee', desc: 'qwen-plus' },
     { id: 'moonshot', label: 'Moonshot', desc: 'moonshot-v1-8k' },
@@ -130,17 +129,16 @@ export default function App() {
       return next;
     });
 
-    const results = await Promise.all(
-      targets.map(async (key) => ({ key, ok: await testProviderConnection(key) }))
+    await Promise.allSettled(
+      targets.map(async (key) => {
+        const ok = await testProviderConnection(key);
+        setProviderStatus(prev => ({
+          ...prev,
+          [key]: ok ? 'ok' : 'fail'
+        }));
+      })
     );
 
-    setProviderStatus(prev => {
-      const next = { ...prev };
-      results.forEach(({ key, ok }) => {
-        next[key] = ok ? 'ok' : 'fail';
-      });
-      return next;
-    });
     setIsCheckingProviders(false);
   };
 
@@ -230,19 +228,16 @@ export default function App() {
 
   const getAiAvailability = () => {
     const available = getAvailableProviders();
-    if (aiProviderRef.current === 'auto') {
-      return { ok: available.length > 0, reason: available.length ? '' : '当前未配置任何可用的 AI 模型。' };
-    }
-    if (!available.includes(aiProviderRef.current as Exclude<AiProvider, 'auto'>)) {
-      return { ok: false, reason: '当前选中的 AI 模型未配置或不可用。' };
+    if (!available.includes(aiProviderRef.current)) {
+      return { ok: false, reason: '\u5f53\u524d\u9009\u4e2d\u7684 AI \u6a21\u578b\u672a\u914d\u7f6e\u6216\u4e0d\u53ef\u7528\u3002' };
     }
     if (providerStatus[aiProviderRef.current] === 'fail') {
-      return { ok: false, reason: '当前选中的 AI 模型不可用。' };
+      return { ok: false, reason: '\u5f53\u524d\u9009\u4e2d\u7684 AI \u6a21\u578b\u4e0d\u53ef\u7528\u3002' };
     }
     return { ok: true, reason: '' };
   };
 
-  const requestEnterMode = (nextMode: AppMode) => {
+const requestEnterMode = (nextMode: AppMode) => {
     if (nextMode !== 'student_login' && nextMode !== 'teacher_login') {
       setMode(nextMode);
       return;
@@ -480,15 +475,13 @@ export default function App() {
                   <div className="model-wheel" ref={modelWheelRef} role="listbox" aria-label="AI models">
                     {providerOptions.map(option => {
                       const status = providerStatus[option.id];
-                      const dotClass = option.id === 'auto'
-                        ? 'model-dot--auto'
-                        : status === 'ok'
-                          ? 'model-dot--ok'
-                          : status === 'fail'
-                            ? 'model-dot--fail'
-                            : status === 'checking'
-                              ? 'model-dot--checking'
-                              : 'model-dot--idle';
+                      const dotClass = status === 'ok'
+                        ? 'model-dot--ok'
+                        : status === 'fail'
+                          ? 'model-dot--fail'
+                          : status === 'checking'
+                            ? 'model-dot--checking'
+                            : 'model-dot--idle';
                       return (
                         <button
                           key={option.id}
@@ -524,15 +517,13 @@ export default function App() {
                     {providerOptions.find(option => option.id === aiProvider)?.desc}
                   </span>
                   <span className="model-picker__meta-status">
-                    {modelSelectorCopy.availability} · {aiProvider === 'auto'
-                      ? `${getAvailableProviders().length}${modelSelectorCopy.configuredSuffix}`
-                      : providerStatus[aiProvider] === 'ok'
-                        ? modelSelectorCopy.statusOk
-                        : providerStatus[aiProvider] === 'fail'
-                          ? modelSelectorCopy.statusFail
-                          : providerStatus[aiProvider] === 'checking'
-                            ? modelSelectorCopy.statusChecking
-                            : modelSelectorCopy.statusUnknown}
+                    {modelSelectorCopy.availability} / {providerStatus[aiProvider] === 'ok'
+                      ? modelSelectorCopy.statusOk
+                      : providerStatus[aiProvider] === 'fail'
+                        ? modelSelectorCopy.statusFail
+                        : providerStatus[aiProvider] === 'checking'
+                          ? modelSelectorCopy.statusChecking
+                          : modelSelectorCopy.statusUnknown}
                   </span>
                 </div>
               </div>

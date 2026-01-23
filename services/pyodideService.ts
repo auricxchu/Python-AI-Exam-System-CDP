@@ -16,9 +16,16 @@ async function init(sab, dataSab) {
   
   pyodide = await loadPyodide();
   
-  // Setup output streams
-  pyodide.setStdout({ batched: (text) => postMessage({ type: 'output', text }) });
-  pyodide.setStderr({ batched: (text) => postMessage({ type: 'output', text: "Error: " + text }) });
+  const normalizeOutput = (chunk) => {
+    if (typeof chunk === 'string') return chunk;
+    if (chunk instanceof Uint8Array) return new TextDecoder().decode(chunk);
+    if (chunk instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(chunk));
+    return String(chunk ?? '');
+  };
+
+  // Setup output streams (use write to flush prompt text immediately)
+  pyodide.setStdout({ write: (text) => postMessage({ type: 'output', text: normalizeOutput(text) }) });
+  pyodide.setStderr({ write: (text) => postMessage({ type: 'output', text: "Error: " + normalizeOutput(text) }) });
 
   // Setup blocking input mechanism using Atomics
   pyodide.setStdin({
@@ -193,9 +200,17 @@ export const runPythonCodeLocal = async (
     // --- Run in Main Thread (Fallback / Simple Input) ---
     if (!mainPyodide) throw new Error("Main thread Pyodide failed to init");
 
+    const normalizeOutput = (chunk: any) => {
+      if (typeof chunk === "string") return chunk;
+      if (chunk instanceof Uint8Array) return new TextDecoder().decode(chunk);
+      if (chunk instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(chunk));
+      return String(chunk ?? "");
+    };
+
     // Configure streams for this run
-    mainPyodide.setStdout({ batched: (text: string) => onOutput(text) });
-    mainPyodide.setStderr({ batched: (text: string) => onOutput("Error: " + text) });
+    // Use write to show prompt text immediately (no newline buffering)
+    mainPyodide.setStdout({ write: (text: any) => onOutput(normalizeOutput(text)) });
+    mainPyodide.setStderr({ write: (text: any) => onOutput("Error: " + normalizeOutput(text)) });
     
     // Fallback: Use window.prompt because main thread cannot block asynchronously without prompt()
     mainPyodide.setStdin({

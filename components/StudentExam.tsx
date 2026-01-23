@@ -10,7 +10,7 @@ import TerminalOutput from './TerminalOutput';
 import Modal from './Modal';
 import ImageModal from './ImageModal'; // Import ImageModal
 import CachedImage from './CachedImage';
-import { gradeQuestion, AiProvider, resolveProvider } from '../services/aiService';
+import { gradeQuestion, AiProvider } from '../services/aiService';
 import { runPythonCodeLocal, initPyodide } from '../services/pyodideService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
@@ -46,7 +46,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [finalScore, setFinalScore] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string} | null>(null);
   const [examFinishedAt, setExamFinishedAt] = useState<string | null>(null);
-  const [usedProvider, setUsedProvider] = useState<AiProvider>('auto');
+  const [usedProvider, setUsedProvider] = useState<AiProvider>(aiProvider);
   const providerLabel = (value: AiProvider) => {
     switch (value) {
       case 'deepseek':
@@ -287,7 +287,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const finishExam = async () => {
     setSubmitModalOpen(false);
     setIsSubmitting(true);
-    const resolvedProvider = resolveProvider(aiProvider);
+    const resolvedProvider = aiProvider;
     setUsedProvider(resolvedProvider);
     
     // Step 1: AI Grading
