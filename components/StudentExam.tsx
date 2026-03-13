@@ -11,7 +11,7 @@ import Modal from './Modal';
 import ImageModal from './ImageModal'; // Import ImageModal
 import CachedImage from './CachedImage';
 import { gradeQuestion, AiProvider } from '../services/aiService';
-import { runPythonCodeLocal, initPyodide } from '../services/pyodideService';
+import { runPythonCodeLocal, initPyodide, resetPyodideWorker, abortPyodideRun, resetPyodideRuntime } from '../services/pyodideService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
 
@@ -72,8 +72,17 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
   // Input Handling State
   const [inputPending, setInputPending] = useState(false);
+  const [inputPendingKey, setInputPendingKey] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const resolveInputRef = useRef<((value: string) => void) | null>(null);
+  const runNonceRef = useRef<Record<string, number>>({});
+  const mainSplitRef = useRef<HTMLDivElement | null>(null);
+  const editorSplitRef = useRef<HTMLDivElement | null>(null);
+  const defaultDescWidth = 420;
+  const defaultTerminalHeight = 260;
+  const [descWidth, setDescWidth] = useState(defaultDescWidth);
+  const [terminalHeight, setTerminalHeight] = useState(defaultTerminalHeight);
+  const [dragging, setDragging] = useState<null | 'desc' | 'terminal'>(null);
 
   // Environment State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -95,6 +104,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   }, [questions]);
 
   const currentQ = questions[currentIdx];
+  const currentKey = `${currentQ.id}__${currentIdx}`;
   const resolvedPreviewImage = useResolvedImageUrl(previewImage);
   const resolvedCurrentImage = useResolvedImageUrl(currentQ.imageUrl);
   const cacheBustToken = useMemo(() => Date.now().toString(), []);
@@ -103,6 +113,54 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   useEffect(() => {
     setImageError(false);
   }, [currentIdx, resolvedCurrentImage]);
+
+  useEffect(() => {
+    setInputPending(false);
+    setInputPendingKey(null);
+    setInputValue("");
+  }, [currentKey]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (dragging === 'desc') {
+        const container = mainSplitRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const minDesc = 320;
+        const minEditor = 460;
+        const maxDesc = Math.max(minDesc, rect.width - minEditor);
+        const next = Math.min(maxDesc, Math.max(minDesc, event.clientX - rect.left));
+        setDescWidth(next);
+      }
+
+      if (dragging === 'terminal') {
+        const container = editorSplitRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const minTerminal = 160;
+        const minEditor = 260;
+        const y = event.clientY - rect.top;
+        const next = Math.min(rect.height - minEditor, Math.max(minTerminal, rect.height - y));
+        setTerminalHeight(next);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDragging(null);
+      document.body.classList.remove('splitter-dragging');
+    };
+
+    document.body.classList.add('splitter-dragging');
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('splitter-dragging');
+    };
+  }, [dragging]);
 
   // Init Pyodide in background
   useEffect(() => {
@@ -120,35 +178,82 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
   // --- SHORTCUTS & RUN LOGIC ---
   const handleRun = async () => {
-    if (isRunning) return; // Prevent double run
+    if (isRunning && !inputPending) return; // Prevent double run
     setIsRunning(true);
+    if (inputPending) {
+      const cancelNonce = (runNonceRef.current[currentKey] || 0) + 1;
+      runNonceRef.current[currentKey] = cancelNonce;
+      setOutputs(prev => ({ ...prev, [currentKey]: "" }));
+      abortPyodideRun(inputPendingKey || undefined);
+      resetPyodideWorker();
+      resolveInputRef.current = null;
+      setInputPending(false);
+      setInputPendingKey(null);
+    }
+    if (inputPendingKey && inputPendingKey !== currentKey) {
+      const cancelNonce = (runNonceRef.current[inputPendingKey] || 0) + 1;
+      runNonceRef.current[inputPendingKey] = cancelNonce;
+      setOutputs(prev => ({ ...prev, [inputPendingKey]: "" }));
+      abortPyodideRun(inputPendingKey);
+      resetPyodideWorker();
+      resolveInputRef.current = null;
+      setInputPending(false);
+      setInputPendingKey(null);
+    }
+    resetPyodideRuntime();
     const code = answers[currentQ.id];
+    const runKey = currentKey;
+    const runNonce = (runNonceRef.current[runKey] || 0) + 1;
+    runNonceRef.current[runKey] = runNonce;
     
     // Clear previous output first
-    setOutputs(prev => ({ ...prev, [currentQ.id]: "" }));
+    setOutputs(prev => ({ ...prev, [runKey]: "" }));
+
+    const timeoutId = window.setTimeout(() => {
+        if (runNonceRef.current[runKey] !== runNonce) return;
+        abortPyodideRun(runKey);
+        resetPyodideWorker();
+        setOutputs(prev => ({
+            ...prev,
+            [runKey]: (prev[runKey] || "") + "\n运行超时，已重置运行环境，请重试。\n"
+        }));
+        setIsRunning(false);
+    }, 15000);
 
     try {
         await runPythonCodeLocal(
             code, 
             (currentOutput) => {
+                if (runNonceRef.current[runKey] != runNonce) return;
                 setOutputs(prev => {
-                    const old = prev[currentQ.id] || "";
-                    return { ...prev, [currentQ.id]: old + currentOutput };
+                    const old = prev[runKey] || "";
+                    return { ...prev, [runKey]: old + currentOutput };
                 });
+                if (currentOutput.includes('OSError: [Errno 29]') || currentOutput.includes('I/O error')) {
+                    abortPyodideRun(runKey);
+                    resetPyodideWorker();
+                }
             },
             () => {
+                if (runNonceRef.current[runKey] != runNonce) return Promise.resolve("");
                 return new Promise<string>((resolve) => {
                     setInputValue("");
                     resolveInputRef.current = resolve;
                     setInputPending(true);
+                    setInputPendingKey(runKey);
                 });
-            }
+            },
+            runKey
         );
     } catch (e: any) {
-        setOutputs(prev => ({ ...prev, [currentQ.id]: (prev[currentQ.id] || "") + `\n系统错误: ${e.message}` }));
+        if (runNonceRef.current[runKey] != runNonce) return;
+        setOutputs(prev => ({ ...prev, [runKey]: (prev[runKey] || "") + `\n系统错误: ${e.message}` }));
     }
     
-    setIsRunning(false);
+    window.clearTimeout(timeoutId);
+    if (runNonceRef.current[runKey] === runNonce) {
+      setIsRunning(false);
+    }
   };
 
   // Keyboard Shortcuts Listener
@@ -234,14 +339,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const submitInput = (e?: React.FormEvent) => {
       e?.preventDefault();
       if (resolveInputRef.current) {
+          const targetKey = inputPendingKey ?? currentKey;
           setOutputs(prev => ({
               ...prev,
-              [currentQ.id]: (prev[currentQ.id] || "") + inputValue + "\n"
+              [targetKey]: (prev[targetKey] || "") + inputValue + "\n"
           }));
           
           resolveInputRef.current(inputValue);
           resolveInputRef.current = null;
           setInputPending(false);
+          setInputPendingKey(null);
       }
   };
 
@@ -405,15 +512,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         </div>
 
         <div className="absolute top-4 right-4 z-20">
-          <button
-            onClick={onToggleTheme}
-            className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
-            title={theme === 'light' ? '\u5207\u6362\u5230\u6df1\u8272' : '\u5207\u6362\u5230\u6d45\u8272'}
-          >
-            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            <span className="text-xs font-medium">{theme === 'light' ? '\u6df1\u8272' : '\u6d45\u8272'}</span>
-          </button>
-        </div>
+</div>
 
         {/* Info Modal for Exit Warning */}
         <Modal 
@@ -430,7 +529,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           </div>
         </Modal>
 
-        <div className="max-w-4xl w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-2xl overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500">
+        <div className="max-w-6xl w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-2xl overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500">
           <div className="bg-slate-950/50 p-8 text-center border-b border-slate-800">
              <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                <FileCheck className="w-12 h-12 text-blue-400" />
@@ -527,8 +626,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   }
 
   return (
-    <div className="h-screen bg-slate-950 text-slate-200 flex overflow-hidden font-sans">
-      <Modal 
+    <div className="h-screen w-full bg-slate-950 text-slate-200 flex overflow-hidden font-sans">
+<Modal 
         isOpen={submitModalOpen} 
         onClose={() => setSubmitModalOpen(false)}
         title="提交试卷"
@@ -677,6 +776,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     </span>
                 </div>
 
+
                 <button
                   onClick={onToggleTheme}
                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
@@ -707,9 +807,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             </div>
          </header>
 
-         <div className="flex-1 flex min-h-0">
+         <div className="flex-1 flex min-h-0" ref={mainSplitRef}>
             {/* Description Panel */}
-            <div className="w-[40%] bg-slate-900/50 border-r border-slate-800 flex flex-col min-h-0">
+            <div className="bg-slate-900/50 border-r border-slate-800 flex flex-col min-h-0" style={{ width: descWidth }}>
                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                   <h3 className="text-sm font-bold text-blue-400 mb-4 flex items-center gap-2">
                     <FileText className="w-4 h-4"/> 题目描述
@@ -755,8 +855,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                </div>
             </div>
 
+            <div
+              className="splitter splitter-vertical"
+              role="separator"
+              aria-orientation="vertical"
+              onMouseDown={() => setDragging('desc')}
+              onDoubleClick={() => setDescWidth(defaultDescWidth)}
+            />
+
             {/* Editor & Terminal */}
-            <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]">
+            <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]" ref={editorSplitRef}>
                <div className="flex-1 min-h-0">
                   <CodeEditor 
                     code={answers[currentQ.id]} 
@@ -766,12 +874,20 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     theme={theme}
                   />
                </div>
-               
-               <div className="h-72 shrink-0 relative">
+
+               <div
+                 className="splitter splitter-horizontal"
+                 role="separator"
+                 aria-orientation="horizontal"
+                 onMouseDown={() => setDragging('terminal')}
+                 onDoubleClick={() => setTerminalHeight(defaultTerminalHeight)}
+               />
+
+               <div className="shrink-0 relative terminal-pane" style={{ height: terminalHeight }}>
                   <TerminalOutput
-                    output={outputs[currentQ.id] || null}
+                    output={outputs[currentKey] || null}
                     loading={isRunning}
-                    inputPending={inputPending}
+                    inputPending={inputPending && inputPendingKey === currentKey}
                     inputValue={inputValue}
                     onInputChange={setInputValue}
                     onInputSubmit={submitInput}

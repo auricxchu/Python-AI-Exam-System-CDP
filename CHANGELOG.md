@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add resizable split panes for question, editor, and terminal with reset-on-double-click.
+- Improve splitter styling and light theme contrast.
+- Stabilize Pyodide runs by resetting runtime on each run and aborting stuck runs.
+- Preserve per-question terminal output until the next run.
 - Remove auto/default model option and use explicit provider selection.
 - Update model availability checks to resolve per-provider as they complete.
 - Simplify AI question prompt to a single-line input and remove the continuous-chat hint.

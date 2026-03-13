@@ -9,6 +9,7 @@ import { AiProvider, getAvailableProviders, testProviderConnection } from './ser
 import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
+import OpeningScreen from './components/OpeningScreen';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 
@@ -40,6 +41,8 @@ const generateQuestions = (pool: Question[], rules: any): Question[] => {
 export default function App() {
   const [mode, setMode] = useState<AppMode>('landing');
   const [config, setConfig] = useState<ExamConfig>(storageService.loadConfig());
+  const [openingDone, setOpeningDone] = useState(false);
+  const [landingAnimKey, setLandingAnimKey] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem('app_theme');
     return stored === 'dark' ? 'dark' : 'light';
@@ -95,27 +98,39 @@ export default function App() {
   }, [aiProvider]);
 
   useEffect(() => {
+    if (mode === 'landing') {
+      setLandingAnimKey((prev) => prev + 1);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (openingDone && mode === 'landing') {
+      setLandingAnimKey((prev) => prev + 1);
+    }
+  }, [openingDone, mode]);
+
+  useEffect(() => {
     aiProviderRef.current = aiProvider;
   }, [aiProvider]);
 
   const providerOptions: { id: AiProvider; label: string; desc: string }[] = [
         { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
     { id: 'openai', label: 'OpenAI', desc: 'gpt-4o-mini' },
-    { id: 'qwen', label: '\u901a\u4e49\u5343\u95ee', desc: 'qwen-plus' },
+    { id: 'qwen', label: '通义千问', desc: 'qwen-plus' },
     { id: 'moonshot', label: 'Moonshot', desc: 'moonshot-v1-8k' },
     { id: 'gemini', label: 'Gemini', desc: 'gemini-3-pro-preview' }
   ];
 
   const modelSelectorCopy = {
-    title: '\u6a21\u578b\u9009\u62e9',
-    availability: '\u53ef\u7528\u6027',
-    recheck: '\u68c0\u6d4b',
-    checking: '\u68c0\u6d4b\u4e2d...',
-    configuredSuffix: ' \u4e2a\u5df2\u914d\u7f6e',
-    statusOk: '\u53ef\u7528',
-    statusFail: '\u4e0d\u53ef\u7528',
-    statusChecking: '\u68c0\u6d4b\u4e2d...',
-    statusUnknown: '\u672a\u68c0\u6d4b'
+    title: '模型选择',
+    availability: '可用性',
+    recheck: '检测',
+    checking: '检测中...',
+    configuredSuffix: ' 个已配置',
+    statusOk: '可用',
+    statusFail: '不可用',
+    statusChecking: '检测中...',
+    statusUnknown: '未检测'
   };
 
 
@@ -170,6 +185,9 @@ export default function App() {
       ? Math.max(0, closestIndex - 1)
       : Math.min(items.length - 1, closestIndex + 1);
     items[nextIndex].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    window.setTimeout(() => {
+      updateCenterSelection();
+    }, 350);
   };
 
   const updateCenterSelection = () => {
@@ -229,10 +247,10 @@ export default function App() {
   const getAiAvailability = () => {
     const available = getAvailableProviders();
     if (!available.includes(aiProviderRef.current)) {
-      return { ok: false, reason: '\u5f53\u524d\u9009\u4e2d\u7684 AI \u6a21\u578b\u672a\u914d\u7f6e\u6216\u4e0d\u53ef\u7528\u3002' };
+      return { ok: false, reason: '当前选中的 AI 模型未配置或不可用。' };
     }
     if (providerStatus[aiProviderRef.current] === 'fail') {
-      return { ok: false, reason: '\u5f53\u524d\u9009\u4e2d\u7684 AI \u6a21\u578b\u4e0d\u53ef\u7528\u3002' };
+      return { ok: false, reason: '当前选中的 AI 模型不可用。' };
     }
     return { ok: true, reason: '' };
   };
@@ -287,6 +305,24 @@ const requestEnterMode = (nextMode: AppMode) => {
         console.error("Network check failed", e);
         return false;
     }
+  };
+
+  const verifyLocalIntegrity = async () => {
+    try {
+      storageService.loadConfig();
+      return true;
+    } catch (e) {
+      console.error('Integrity check failed', e);
+      return false;
+    }
+  };
+
+  const runOpeningInit = async () => {
+    await Promise.allSettled([
+      checkNetworkConnectivity(),
+      checkProviders(),
+      verifyLocalIntegrity()
+    ]);
   };
 
   const handleTeacherLogin = (e: React.FormEvent) => {
@@ -389,7 +425,15 @@ const requestEnterMode = (nextMode: AppMode) => {
   }
 
   return (
-    <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans text-slate-200">
+    <>
+      {!openingDone && (
+        <OpeningScreen
+          theme={theme}
+          onInit={runOpeningInit}
+          onComplete={() => setOpeningDone(true)}
+        />
+      )}
+      <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-start px-6 pt-16 pb-8 relative overflow-hidden font-sans text-slate-200">
       {/* Background FX */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
          <div className="landing-orb landing-orb--a" />
@@ -397,16 +441,18 @@ const requestEnterMode = (nextMode: AppMode) => {
          <div className="landing-orb landing-orb--c" />
       </div>
 
-      <div className="absolute top-4 right-4 z-20">
-        <button
-          onClick={toggleTheme}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
-          title={theme === 'light' ? '切换到深色' : '切换到浅色'}
-        >
-          {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
-        </button>
-      </div>
+      {(mode === 'landing' || mode === 'teacher_login' || mode === 'student_login') && openingDone && (
+        <div className="absolute top-4 right-4 z-50">
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
+            title={theme === 'light' ? '切换到深色' : '切换到浅色'}
+          >
+            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Global Alert Modal for Landing/Login Screens */}
       <Modal 
@@ -437,196 +483,266 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
-      <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
-        {mode === 'landing' && (
-          <>
-            <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-6 rounded-2xl mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
-               <Code className="w-12 h-12 text-blue-400" />
-            </div>
-            <h1 className="landing-reveal landing-delay-2 text-4xl md:text-5xl font-bold text-white mb-3 text-center tracking-tight drop-shadow-lg">
-              Python 智能考试系统
-            </h1>
-            <p className="landing-reveal landing-delay-3 text-slate-400 text-lg mb-16 text-center max-w-2xl">
-              基于 AI 的自动化测评与管理平台
-            </p>
-            <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-10">
-              <div className="model-picker">
-                <div className="model-picker__header">
-                  <div className="model-picker__title">{modelSelectorCopy.title}</div>
-                  <button
-                    type="button"
-                    onClick={checkProviders}
-                    className="model-picker__check"
-                  >
-                    {isCheckingProviders ? modelSelectorCopy.checking : modelSelectorCopy.recheck}
-                  </button>
-                </div>
-
-                <div className="model-picker__row">
-                  <button
-                    type="button"
-                    className="model-picker__arrow"
-                    onClick={() => scrollModelWheel('left')}
-                    aria-label="Scroll left"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  <div className="model-wheel" ref={modelWheelRef} role="listbox" aria-label="AI models">
-                    {providerOptions.map(option => {
-                      const status = providerStatus[option.id];
-                      const dotClass = status === 'ok'
-                        ? 'model-dot--ok'
-                        : status === 'fail'
-                          ? 'model-dot--fail'
-                          : status === 'checking'
-                            ? 'model-dot--checking'
-                            : 'model-dot--idle';
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          role="option"
-                          aria-selected={aiProvider === option.id}
-                          data-provider={option.id}
-                          onClick={(event) => {
-                            const target = event.currentTarget;
-                            target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                          }}
-                          className={`model-wheel__item ${aiProvider === option.id ? 'is-active' : ''}`}
-                        >
-                          <span className={`model-dot ${dotClass}`} />
-                          <span className="model-wheel__label">{option.label}</span>
-                        </button>
-                      );
-                    })}
+            <div key={`landing-${landingAnimKey}`} className={`landing-content pt-24 pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
+        <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
+          {mode === 'landing' && (
+            <>
+              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-6 rounded-2xl mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
+                 <Code className="w-12 h-12 text-blue-400" />
+              </div>
+              <h1 className="landing-reveal landing-delay-2 text-4xl md:text-5xl font-bold text-white mb-3 text-center tracking-tight drop-shadow-lg">
+                Python 智能考试系统
+              </h1>
+              <p className="landing-reveal landing-delay-3 text-slate-400 text-lg mb-16 text-center max-w-2xl">
+                基于 AI 的自动化测评与管理平台
+              </p>
+              <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-10">
+                <div className="model-picker">
+                  <div className="model-picker__header">
+                    <div className="model-picker__title">{modelSelectorCopy.title}</div>
+                    <button
+                      type="button"
+                      onClick={checkProviders}
+                      className="model-picker__check"
+                    >
+                      {isCheckingProviders ? modelSelectorCopy.checking : modelSelectorCopy.recheck}
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    className="model-picker__arrow"
-                    onClick={() => scrollModelWheel('right')}
-                    aria-label="Scroll right"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+                  <div className="model-picker__row">
+                    <button
+                      type="button"
+                      className="model-picker__arrow"
+                      onClick={() => scrollModelWheel('left')}
+                      aria-label="Scroll left"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
 
-                <div className="model-picker__meta">
-                  <span className="model-picker__meta-name">
-                    {providerOptions.find(option => option.id === aiProvider)?.desc}
-                  </span>
-                  <span className="model-picker__meta-status">
-                    {modelSelectorCopy.availability} / {providerStatus[aiProvider] === 'ok'
-                      ? modelSelectorCopy.statusOk
-                      : providerStatus[aiProvider] === 'fail'
-                        ? modelSelectorCopy.statusFail
-                        : providerStatus[aiProvider] === 'checking'
-                          ? modelSelectorCopy.statusChecking
-                          : modelSelectorCopy.statusUnknown}
-                  </span>
+                    <div className="model-wheel" ref={modelWheelRef} role="listbox" aria-label="AI models">
+                      {providerOptions.map(option => {
+                        const status = providerStatus[option.id];
+                        const dotClass = status === 'ok'
+                          ? 'model-dot--ok'
+                          : status === 'fail'
+                            ? 'model-dot--fail'
+                            : status === 'checking'
+                              ? 'model-dot--checking'
+                              : 'model-dot--idle';
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={aiProvider === option.id}
+                            data-provider={option.id}
+                            onClick={(event) => {
+                              const target = event.currentTarget;
+                              setAiProvider(option.id);
+                              target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                              window.setTimeout(() => {
+                                updateCenterSelection();
+                              }, 350);
+                            }}
+                            className={`model-wheel__item ${aiProvider === option.id ? 'is-active' : ''}`}
+                          >
+                            <span className={`model-dot ${dotClass}`} />
+                            <span className="model-wheel__label">{option.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="model-picker__arrow"
+                      onClick={() => scrollModelWheel('right')}
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="model-picker__meta">
+                    <span className="model-picker__meta-name">
+                      {providerOptions.find(option => option.id === aiProvider)?.desc}
+                    </span>
+                    <span className="model-picker__meta-status">
+                      {modelSelectorCopy.availability} / {providerStatus[aiProvider] === 'ok'
+                        ? modelSelectorCopy.statusOk
+                        : providerStatus[aiProvider] === 'fail'
+                          ? modelSelectorCopy.statusFail
+                          : providerStatus[aiProvider] === 'checking'
+                            ? modelSelectorCopy.statusChecking
+                            : modelSelectorCopy.statusUnknown}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
-              <button 
-                onClick={() => requestEnterMode('student_login')}
-                className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
-              >
-                <div className="flex justify-between items-start mb-8">
-                   <div className="bg-blue-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
-                     <GraduationCap className="w-8 h-8 text-blue-400" />
-                   </div>
-                   <GraduationCap className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-blue-900/10 transition-colors transform rotate-12 landing-card-watermark" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">我是学生</h2>
-                <p className="text-slate-400 text-sm mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
-                <div className="flex items-center text-blue-400 font-bold text-sm">
-                   进入考试 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </button>
+              <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
+                <button 
+                  onClick={() => requestEnterMode('student_login')}
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                     <div className="bg-blue-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
+                       <GraduationCap className="w-8 h-8 text-blue-400" />
+                     </div>
+                     <GraduationCap className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-blue-900/10 transition-colors transform rotate-12 landing-card-watermark" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">我是学生</h2>
+                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
+                  <div className="flex items-center text-blue-400 font-bold text-sm">
+                     进入考试 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
 
-              <button 
-                onClick={() => requestEnterMode('teacher_login')}
-                className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
-              >
-                <div className="flex justify-between items-start mb-8">
-                   <div className="bg-purple-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
-                     <Monitor className="w-8 h-8 text-purple-400" />
-                   </div>
-                   <Monitor className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-purple-900/10 transition-colors transform -rotate-6 landing-card-watermark" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">我是老师</h2>
-                <p className="text-slate-400 text-sm mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>
-                <div className="flex items-center text-purple-400 font-bold text-sm">
-                   进入后台 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </button>
-            </div>
-            
-            {/* System Exit Button (Flow Layout, No Overlap) */}
-            <div className="landing-reveal landing-delay-6 z-20 mt-4">
-               <button 
-                 onClick={handleSystemExit}
-                 className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
-               >
-                 <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                 <span className="text-sm font-medium">退出系统</span>
-               </button>
-            </div>
-          </>
-        )}
-
-        {mode === 'teacher_login' && (
-           <div className="w-full max-w-md bg-slate-900/80 p-8 rounded-xl border border-slate-700/50 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-300">
-              <div className="flex justify-between items-center mb-8">
-                 <h2 className="text-xl font-bold text-white flex items-center gap-2"><Monitor className="w-5 h-5 text-blue-500"/> 教师管理端</h2>
-                 <button onClick={() => setMode('landing')} className="text-slate-500 hover:text-white"><LogOut className="w-4 h-4"/></button>
+                <button 
+                  onClick={() => requestEnterMode('teacher_login')}
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                     <div className="bg-purple-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
+                       <Monitor className="w-8 h-8 text-purple-400" />
+                     </div>
+                     <Monitor className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-purple-900/10 transition-colors transform -rotate-6 landing-card-watermark" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">我是老师</h2>
+                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>
+                  <div className="flex items-center text-purple-400 font-bold text-sm">
+                     进入后台 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
               </div>
-              <form onSubmit={handleTeacherLogin} className="space-y-6">
-                 <div>
-                   <label className="block text-slate-400 text-xs mb-2">管理密码</label>
-                   <input 
-                     name="password" 
-                     type="password" 
-                     className="w-full bg-slate-950/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition-colors"
-                     placeholder="请输入密码"
-                   />
-                 </div>
-                 <Button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/30">进入后台</Button>
-              </form>
-           </div>
+              
+              {/* System Exit Button (Flow Layout, No Overlap) */}
+              <div className="landing-reveal landing-delay-6 z-20 mt-4">
+                 <button 
+                   onClick={handleSystemExit}
+                   className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
+                 >
+                   <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                   <span className="text-sm font-medium">退出系统</span>
+                 </button>
+              </div>
+            </>
+          )}
+
+          {mode === 'teacher_login' && (
+           <div className="w-full flex justify-center min-h-[70vh] items-center">
+            <div className="w-full max-w-5xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-[1.05fr_0.95fr] animate-in fade-in zoom-in-95 duration-300">
+              <div className="p-10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-blue-950/40 border-b md:border-b-0 md:border-r border-slate-800">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
+                    <Monitor className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 tracking-[0.3em] uppercase">Teacher Portal</div>
+                    <h2 className="text-2xl font-bold text-white">教师管理端</h2>
+                  </div>
+                </div>
+                <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                  管理题库、配置试卷规则、查看考试数据与成绩报表。
+                </p>
+                <div className="space-y-3 text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    管理员登录后可修改考试配置
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    支持本地与云端数据同步
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    请妥善保管管理密码
+                  </div>
+                </div>
+              </div>
+              <div className="p-10">
+                <div className="mb-8">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="w-4 h-4 text-blue-400" /> 登录验证</h3>
+                </div>
+                <form onSubmit={handleTeacherLogin} className="space-y-6">
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-2">管理员密码</label>
+                    <input 
+                      name="password" 
+                      type="password" 
+                      className="w-full bg-slate-950/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition-colors"
+                      placeholder="请输入管理密码"
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
+                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/30">进入后台</Button>
+                  </div>
+                </form>
+                <div className="mt-6 text-xs text-slate-500">忘记密码请联系系统管理员。</div>
+              </div>
+            </div>
+          </div>
         )}
 
         {mode === 'student_login' && (
-           <div className="w-full max-w-md bg-slate-900/80 p-8 rounded-xl border border-slate-700/50 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-300">
-              <div className="text-center mb-8">
-                <div className="bg-blue-600/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
-                  <GraduationCap className="w-8 h-8 text-blue-500" />
+           <div className="w-full flex justify-center min-h-[70vh] items-center">
+            <div className="w-full max-w-5xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-[1.05fr_0.95fr] animate-in fade-in zoom-in-95 duration-300">
+              <div className="p-10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-indigo-950/40 border-b md:border-b-0 md:border-r border-slate-800">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
+                    <GraduationCap className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 tracking-[0.3em] uppercase">Student Portal</div>
+                    <h2 className="text-2xl font-bold text-white">考生登录</h2>
+                  </div>
                 </div>
-                <h2 className="text-xl font-bold text-white">{config.examTitle}</h2>
+                <div className="text-slate-300 text-lg font-semibold">{config.examTitle}</div>
                 <p className="text-xs text-slate-500 mt-1">考试时长: {config.duration} 分钟</p>
+                <div className="mt-6 space-y-3 text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    请确认姓名与学号准确无误
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    考试过程中保持网络连接稳定
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    进入后请勿退出应用
+                  </div>
+                </div>
               </div>
-              <form onSubmit={handleStudentStart} className="space-y-4">
-                 <Input name="name" label="姓名" placeholder="请输入姓名" required />
-                 <Input name="sid" label="学号" placeholder="请输入11位学号" required maxLength={11} />
-                 {config.accessKey && config.accessKey.trim() !== "" && (
+              <div className="p-10">
+                <div className="text-sm font-semibold text-slate-300 mb-6 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-blue-400" /> 资料填写
+                </div>
+                <form onSubmit={handleStudentStart} className="space-y-4">
+                  <Input name="name" label="姓名" placeholder="请输入姓名" required />
+                  <Input name="sid" label="学号" placeholder="请输入11位学号" required maxLength={11} />
+                  {config.accessKey && config.accessKey.trim() !== "" && (
                     <Input name="accessKey" label="考试密钥" placeholder="请输入考试访问密钥" required type="password" />
-                 )}
-                 <div className="flex gap-3 pt-4">
-                   <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1">返回</Button>
-                   <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/30" isLoading={isCheckingNet}>
+                  )}
+                  <div className="flex gap-3 pt-4">
+                    <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
+                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/30 whitespace-nowrap min-w-[140px]" isLoading={isCheckingNet}>
                       {isCheckingNet ? "正在检测网络..." : "开始考试"}
-                   </Button>
-                 </div>
-              </form>
-           </div>
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         )}
+        </div>
       </div>
-      
-      <div className="absolute bottom-4 text-slate-600 text-[10px] tracking-wide">
-        &copy; 2024 Python Exam System. All Rights Reserved.
-      </div>
+      {mode === 'landing' && (
+        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-600 text-[9px] tracking-wide text-center pointer-events-none z-30">
+          &copy; 2024 Python Exam System. All Rights Reserved.
+        </div>
+      )}
     </div>
+    </>
   );
 }

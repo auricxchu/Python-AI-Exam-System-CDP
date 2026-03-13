@@ -311,8 +311,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-8 font-sans text-slate-200 flex flex-col overflow-hidden">
-      {/* Modals */}
+    <div className="h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-6 font-sans text-slate-200 flex flex-col overflow-hidden">
+{/* Modals */}
       <Modal 
         isOpen={!!deleteId} 
         onClose={() => setDeleteId(null)} 
@@ -343,7 +343,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
       )}
 
       {/* Header */}
-      <div className="max-w-[1600px] w-full mx-auto flex justify-between items-center mb-6 shrink-0 pt-2">
+      <div className="w-full max-w-none flex justify-between items-center mb-6 shrink-0 pt-2">
          <div className="flex items-center gap-4">
            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
              <Cloud className="w-8 h-8 text-blue-500" /> 云端题库管理
@@ -356,22 +356,19 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
            )}
          </div>
          <div className="flex items-center gap-4 text-slate-400 text-sm">
-           <span>当前试卷设计总分: <span className="text-blue-400 font-bold">{totalScore}</span> 分</span>
+           <span>{"当前试卷设计总分"}: <span className="text-blue-400 font-bold">{totalScore}</span> {"分"}</span>
            <button
-             onClick={onToggleTheme}
-             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
-             title={theme === 'light' ? '切换到深色' : '切换到浅色'}
+             onClick={onExit}
+             className="flex items-center gap-2 px-3 py-1.5 min-w-[96px] justify-center bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
            >
-             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-             <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
+             <LogOut className="w-4 h-4" /> {'返回首页'}
            </button>
-           <button onClick={onExit} className="teacher-return hover:text-white flex items-center gap-1 transition-colors"><LogOut className="w-4 h-4"/> 返回</button>
          </div>
       </div>
 
-      <div className="max-w-[1600px] w-full mx-auto grid grid-cols-12 gap-6 flex-1 min-h-0">
+      <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
         {/* Left Panel: Settings - Scrollable */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
+        <div className="col-span-12 lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
            {/* Basic Settings */}
            <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2"><Settings className="w-4 h-4"/> 基础设置</h3>
@@ -463,7 +460,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
         </div>
 
         {/* Right Panel: Content - Fills Height */}
-        <div className="col-span-12 lg:col-span-8 bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-700/50 flex flex-col h-full overflow-hidden shadow-xl">
+        <div className="col-span-12 lg:col-span-7 bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-700/50 flex flex-col h-full overflow-hidden shadow-xl">
            <div className="flex border-b border-slate-700/50 bg-slate-800/30 shrink-0">
               {[{ id: 'list', label: '云端题库列表' }, { id: 'add', label: editingId ? '编辑题目' : '添加题目' }].map(tab => (
                 <button 
