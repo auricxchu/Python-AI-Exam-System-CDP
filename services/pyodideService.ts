@@ -301,7 +301,6 @@ export const runPythonCodeLocal = async (
     const sessionKey = sessionId || DEFAULT_SESSION_KEY;
     const runToken = ++runTokenCounter;
     activeRunTokens.set(sessionKey, runToken);
-    releaseStdinWait();
     workerOutputCallback = onOutput;
     workerOutputCallbacks.set(sessionKey, onOutput);
     
@@ -313,8 +312,15 @@ export const runPythonCodeLocal = async (
         return;
       }
       if (onInputRequest && sab && dataSab) {
-          const userInput = await onInputRequest();
-          feedInputBuffer(userInput || "");
+          let attempts = 0;
+          while (true) {
+            const userInput = await onInputRequest();
+            if (userInput !== "" || attempts >= 1) {
+              feedInputBuffer(userInput || "");
+              break;
+            }
+            attempts += 1;
+          }
       } else {
           feedInputBuffer("");
       }

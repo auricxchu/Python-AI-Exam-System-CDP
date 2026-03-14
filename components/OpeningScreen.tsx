@@ -180,7 +180,7 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
     return () => {
       aliveRef.current = false;
     };
-  }, [theme, onLineChange, onStepChange, onEditorExit, onSubtitle, onFadeOut, onPrelude, onPreludeText, isInitDone, onComplete]);
+  }, [theme, onLineChange, onStepChange, onEditorExit, onSubtitle, onFadeOut, onPrelude, onPreludeText, onComplete]);
 
   return <span ref={codeRef} />;
 });

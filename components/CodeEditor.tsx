@@ -3,11 +3,11 @@ import React from 'react';
 import Editor, { loader } from "@monaco-editor/react";
 import { Play, Loader2 } from 'lucide-react';
 
-// Using unpkg for stability
-loader.config({ 
-  paths: { 
-    vs: "https://unpkg.com/monaco-editor@0.44.0/min/vs" 
-  } 
+const monacoBaseUrl = new URL('monaco/vs', window.location.href).toString();
+loader.config({
+  paths: {
+    vs: monacoBaseUrl
+  }
 });
 
 interface CodeEditorProps {

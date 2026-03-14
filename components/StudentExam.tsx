@@ -76,6 +76,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [inputValue, setInputValue] = useState("");
   const resolveInputRef = useRef<((value: string) => void) | null>(null);
   const runNonceRef = useRef<Record<string, number>>({});
+  const outputShadowRef = useRef<Record<string, string>>({});
+  const stdoutShadowRef = useRef<Record<string, string>>({});
   const mainSplitRef = useRef<HTMLDivElement | null>(null);
   const editorSplitRef = useRef<HTMLDivElement | null>(null);
   const defaultDescWidth = 420;
@@ -208,6 +210,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     
     // Clear previous output first
     setOutputs(prev => ({ ...prev, [runKey]: "" }));
+    outputShadowRef.current[runKey] = "";
+    stdoutShadowRef.current[runKey] = "";
 
     const timeoutId = window.setTimeout(() => {
         if (runNonceRef.current[runKey] !== runNonce) return;
@@ -225,10 +229,26 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             code, 
             (currentOutput) => {
                 if (runNonceRef.current[runKey] != runNonce) return;
-                setOutputs(prev => {
-                    const old = prev[runKey] || "";
-                    return { ...prev, [runKey]: old + currentOutput };
-                });
+                if (!currentOutput) return;
+                const prevStdout = stdoutShadowRef.current[runKey] || "";
+                let delta = currentOutput;
+                if (currentOutput.startsWith(prevStdout)) {
+                    delta = currentOutput.slice(prevStdout.length);
+                } else {
+                    let overlap = 0;
+                    const maxOverlap = Math.min(prevStdout.length, currentOutput.length);
+                    for (let i = 1; i <= maxOverlap; i++) {
+                        if (prevStdout.slice(-i) === currentOutput.slice(0, i)) {
+                            overlap = i;
+                        }
+                    }
+                    delta = currentOutput.slice(overlap);
+                }
+                stdoutShadowRef.current[runKey] = currentOutput;
+                if (!delta) return;
+                const display = (outputShadowRef.current[runKey] || "") + delta;
+                outputShadowRef.current[runKey] = display;
+                setOutputs(prev => ({ ...prev, [runKey]: display }));
                 if (currentOutput.includes('OSError: [Errno 29]') || currentOutput.includes('I/O error')) {
                     abortPyodideRun(runKey);
                     resetPyodideWorker();
@@ -338,11 +358,15 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
   const submitInput = (e?: React.FormEvent) => {
       e?.preventDefault();
+      if (!inputValue.trim()) return;
       if (resolveInputRef.current) {
           const targetKey = inputPendingKey ?? currentKey;
+          const shadow = outputShadowRef.current[targetKey] || "";
+          const next = shadow + inputValue + "\n";
+          outputShadowRef.current[targetKey] = next;
           setOutputs(prev => ({
               ...prev,
-              [targetKey]: (prev[targetKey] || "") + inputValue + "\n"
+              [targetKey]: next
           }));
           
           resolveInputRef.current(inputValue);

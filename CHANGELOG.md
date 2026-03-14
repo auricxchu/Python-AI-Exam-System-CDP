@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Load Monaco editor assets locally for offline use and prevent IDE from hanging without VPN.
+- Prevent opening-screen code animation from restarting during init checks.
+- Stabilize Pyodide terminal output to avoid repeated input prompts.
 - Add resizable split panes for question, editor, and terminal with reset-on-double-click.
 - Improve splitter styling and light theme contrast.
 - Stabilize Pyodide runs by resetting runtime on each run and aborting stuck runs.

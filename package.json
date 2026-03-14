@@ -10,7 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "dist": "tsc && vite build && electron-builder",
-    "postinstall": "node scripts/patch-electron-rebuild.js",
+    "postinstall": "node scripts/patch-electron-rebuild.js && node scripts/copy-monaco.mjs",
     "build:ime": "powershell -ExecutionPolicy Bypass -File scripts/build-ime-helper.ps1"
   },
   "dependencies": {
