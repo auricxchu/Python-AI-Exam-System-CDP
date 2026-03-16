@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Keyboard, Type, ZoomIn, Command, Info, Sun, Moon
@@ -93,7 +93,12 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   // Input Method & Keyboard State
   const [capsLock, setCapsLock] = useState(false);
   const [imeActive, setImeActive] = useState(false);
-  const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string } | null>(null);
+  const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null>(null);
+  const [imeShiftOpen, setImeShiftOpen] = useState<boolean | null>(null);
+  const shiftTapRef = useRef<{ downAt: number; used: boolean }>({ downAt: 0, used: false });
+  const imeLastKlidRef = useRef('');
+  const imeManualOverrideRef = useRef(false);
+  const lastChineseOpenRef = useRef<boolean | null>(null);
 
   // Image Loading State (per question)
   const [imageError, setImageError] = useState(false);
@@ -110,6 +115,36 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolvedPreviewImage = useResolvedImageUrl(previewImage);
   const resolvedCurrentImage = useResolvedImageUrl(currentQ.imageUrl);
   const cacheBustToken = useMemo(() => Date.now().toString(), []);
+  const imeName = (imeStatus?.name || '').trim();
+  const imeNameLower = imeName.toLowerCase();
+  const hasImeName = imeName.length > 0;
+  const klid = (imeStatus?.klid || '').toUpperCase();
+  const isKlidChinese = klid.endsWith('0804');
+  const isKlidEnglish = klid.endsWith('0409');
+  const isEnglishKeyboard = hasImeName && (
+    imeNameLower.includes('english') ||
+    imeNameLower.includes('eng') ||
+    imeNameLower.includes('us') ||
+    imeNameLower.includes('keyboard')
+  );
+  const isChineseIme = klid
+    ? isKlidChinese
+    : (hasImeName ? (
+        !isEnglishKeyboard && (
+          imeNameLower.includes('pinyin') ||
+          imeNameLower.includes('wubi') ||
+          imeNameLower.includes('ime')
+        )
+      ) : true);
+  const imeOpen = isChineseIme ? (imeShiftOpen ?? (imeStatus ? imeStatus.open : imeActive)) : false;
+  const variant = (imeStatus?.variant || '').toLowerCase();
+  const isWubi =
+    variant === 'wubi' ||
+    imeNameLower.includes('wubi') ||
+    klid.startsWith('E0020804') ||
+    klid.startsWith('E0050804');
+  const imeSecondary = isChineseIme ? (isWubi ? '五笔' : '拼') : '';
+  const imePrimary = isChineseIme ? (imeOpen ? '中' : '英') : 'ENG';
 
   // Reset image error state when question or resolved image changes
   useEffect(() => {
@@ -292,6 +327,26 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         if (e.getModifierState("CapsLock") !== capsLock) {
             setCapsLock(e.getModifierState("CapsLock"));
         }
+
+        if (e.key === 'Shift') {
+            shiftTapRef.current = { downAt: Date.now(), used: false };
+        } else if (shiftTapRef.current.downAt) {
+            shiftTapRef.current.used = true;
+        }
+    };
+
+    const handleGlobalKeyUp = (e: KeyboardEvent) => {
+        if (e.key !== 'Shift') return;
+        const { downAt, used } = shiftTapRef.current;
+        shiftTapRef.current = { downAt: 0, used: false };
+        if (!used && Date.now() - downAt < 450) {
+            imeManualOverrideRef.current = true;
+            setImeShiftOpen(prev => {
+              const next = !(prev ?? (lastChineseOpenRef.current ?? false));
+              lastChineseOpenRef.current = next;
+              return next;
+            });
+        }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -304,6 +359,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const handleCompositionEnd = () => setImeActive(false);
 
     window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keyup', handleGlobalKeyUp);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('compositionstart', handleCompositionStart);
     window.addEventListener('compositionend', handleCompositionEnd);
@@ -321,6 +377,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
     return () => {
         window.removeEventListener('keydown', handleGlobalKeyDown);
+        window.removeEventListener('keyup', handleGlobalKeyUp);
         window.removeEventListener('mousedown', handleMouseDown);
         window.removeEventListener('compositionstart', handleCompositionStart);
         window.removeEventListener('compositionend', handleCompositionEnd);
@@ -334,15 +391,50 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const electronRequire = (window as any).electronRequire || (window as any).require;
     if (!electronRequire) return;
     const { ipcRenderer } = electronRequire('electron');
-    ipcRenderer.invoke('ime-status-get').then((payload: { open: boolean; name?: string } | null) => {
-      if (payload) setImeStatus(payload);
-    }).catch(() => {});
-    const handler = (_event: any, payload: { open: boolean; name?: string }) => {
+    const applyStatus = (payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
       setImeStatus(payload);
+      setImeShiftOpen((prev) => {
+        const now = Date.now();
+        const nextKlid = (payload.klid || '').toUpperCase();
+        const prevKlid = imeLastKlidRef.current;
+        if (nextKlid && nextKlid !== prevKlid) {
+          imeLastKlidRef.current = nextKlid;
+          if (nextKlid.endsWith('0409')) {
+            imeManualOverrideRef.current = false;
+            return false;
+          }
+          if (nextKlid.endsWith('0804')) {
+            if (lastChineseOpenRef.current === null) {
+              lastChineseOpenRef.current = payload.open;
+              imeManualOverrideRef.current = false;
+              return payload.open;
+            }
+            imeManualOverrideRef.current = true;
+            return lastChineseOpenRef.current;
+          }
+          return payload.open;
+        }
+        if (imeManualOverrideRef.current && isChineseIme) return prev;
+        if (isChineseIme) {
+          lastChineseOpenRef.current = payload.open;
+        }
+        return payload.open;
+      });
+    };
+    const fetchStatus = () => {
+      return ipcRenderer.invoke('ime-status-get').then((payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null) => {
+        if (payload) applyStatus(payload);
+      }).catch(() => {});
+    };
+    fetchStatus();
+    const handler = (_event: any, payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
+      applyStatus(payload);
     };
     ipcRenderer.on('ime-status', handler);
+    const poll = window.setInterval(fetchStatus, 600);
     return () => {
       ipcRenderer.removeListener('ime-status', handler);
+      window.clearInterval(poll);
     };
   }, []);
 
@@ -781,26 +873,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             
             <div className="flex items-center gap-6">
                 
-                {/* Input Method Status (Clear Visual Indicator) */}
-                <div 
-                   className="flex items-center gap-2 px-3 py-1.5 border rounded-full select-none bg-slate-900 border-slate-700"
-                >
-                    <div className={`flex items-center gap-1.5 ${capsLock ? 'text-blue-400' : 'text-slate-500'}`}>
-                        <Keyboard className="w-4 h-4" />
-                        <span className="text-xs font-bold tracking-wide">
-                            CAPS: {capsLock ? 'ON' : 'OFF'}
-                        </span>
-                    </div>
-                    <div className="w-px h-3 bg-slate-700"></div>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-bold">
-                      {(imeStatus ? imeStatus.open : imeActive) ? '中' : '英'}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {imeStatus?.name || '输入法'}
-                    </span>
-                </div>
-
-
                 <button
                   onClick={onToggleTheme}
                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
@@ -920,6 +992,19 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                </div>
             </div>
          </div>
+      </div>
+
+      <div className="ime-float" title={imeName || (isChineseIme ? '中文输入法' : '英文键盘')}>
+        <div className={`ime-pill ${isChineseIme ? '' : 'ime-pill--eng'}`}>
+          <span className="ime-pill__icon">
+            <Keyboard className="w-3.5 h-3.5" />
+          </span>
+          <span className="ime-pill__divider" />
+          <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>CAPS</span>
+          <span className="ime-pill__divider" />
+          <span className="ime-pill__cell">{imePrimary}</span>
+          {imeSecondary && <span className="ime-pill__cell">{imeSecondary}</span>}
+        </div>
       </div>
     </div>
   );

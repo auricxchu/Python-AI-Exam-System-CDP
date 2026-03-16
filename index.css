@@ -42,6 +42,85 @@ body {
   overflow: hidden; /* Prevent body scroll, let app handle it */
 }
 
+.ime-float {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.ime-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #c7d2a7;
+  background: linear-gradient(180deg, #f2f8e8 0%, #e6f1d7 100%);
+  color: #1f2937;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.ime-pill__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #3f4c2c;
+  opacity: 0.8;
+}
+
+.ime-pill__divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(63, 76, 44, 0.25);
+}
+
+.ime-pill__cell {
+  min-width: 18px;
+  text-align: center;
+}
+
+.ime-pill__caps {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+.ime-pill__caps--on {
+  color: #0f172a;
+  opacity: 1;
+}
+
+.ime-pill--eng {
+  padding: 6px 12px;
+  letter-spacing: 0.08em;
+}
+
+:root[data-theme="dark"] .ime-pill {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #e2e8f0;
+  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
+}
+
+:root[data-theme="dark"] .ime-pill__icon {
+  color: #e2e8f0;
+  opacity: 0.8;
+}
+
+:root[data-theme="dark"] .ime-pill__divider {
+  background: rgba(148, 163, 184, 0.3);
+}
+
+:root[data-theme="dark"] .ime-pill__caps--on {
+  color: #e2e8f0;
+}
+
 :root[data-theme="light"] .bg-gradient-to-br {
   background-image: none !important;
   background-color: var(--app-bg) !important;

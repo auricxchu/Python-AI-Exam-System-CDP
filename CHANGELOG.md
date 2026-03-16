@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Improve IME status handling with TSF probing, shift-tap state, and bottom-right status bar (now includes CAPS).
+- Remove duplicate IME status bar from the top header.
+- Restore StudentExam.tsx to valid UTF-8 after encoding corruption.
+- Stabilize IME CN/EN toggle behavior when switching between ENG and Chinese layouts.
 - Load Monaco editor assets locally for offline use and prevent IDE from hanging without VPN.
 - Prevent opening-screen code animation from restarting during init checks.
 - Stabilize Pyodide terminal output to avoid repeated input prompts.
@@ -20,3 +24,8 @@
 - Expand AI provider support (OpenAI/Qwen/Moonshot) and rename service to `aiService`.
 - Improve exam report details (start/end time, actual grading model) and layout.
 - Refine light theme background and hover contrast.
+
+## Known Issues
+
+- Wubi IME profile is not detected; UI falls back to Pinyin/ENG only.
+- TSF profile reporting can return default (all-zero) profile GUIDs on some systems.
