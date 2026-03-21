@@ -1,7 +1,7 @@
 ﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Keyboard, Type, ZoomIn, Command, Info, Sun, Moon
+  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen
 } from 'lucide-react';
 import { ExamConfig, Question, GradingResult, UserProfile, ExamReport } from '../types';
 import { Button } from './ui';
@@ -95,10 +95,21 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [imeActive, setImeActive] = useState(false);
   const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null>(null);
   const [imeShiftOpen, setImeShiftOpen] = useState<boolean | null>(null);
+  const [imePosition, setImePosition] = useState(() => {
+    const saved = localStorage.getItem('ime_float_position');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as { x: number; y: number };
+      } catch {}
+    }
+    return { x: Math.max(16, window.innerWidth - 220), y: Math.max(16, window.innerHeight - 68) };
+  });
   const shiftTapRef = useRef<{ downAt: number; used: boolean }>({ downAt: 0, used: false });
   const imeLastKlidRef = useRef('');
   const imeManualOverrideRef = useRef(false);
   const lastChineseOpenRef = useRef<boolean | null>(null);
+  const imeFloatRef = useRef<HTMLDivElement | null>(null);
+  const imeDragOffsetRef = useRef({ x: 0, y: 0 });
 
   // Image Loading State (per question)
   const [imageError, setImageError] = useState(false);
@@ -156,6 +167,25 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     setInputPendingKey(null);
     setInputValue("");
   }, [currentKey]);
+
+  useEffect(() => {
+    localStorage.setItem('ime_float_position', JSON.stringify(imePosition));
+  }, [imePosition]);
+
+  useEffect(() => {
+    const clampPosition = () => {
+      const rect = imeFloatRef.current?.getBoundingClientRect();
+      const width = rect?.width || 220;
+      const height = rect?.height || 44;
+      setImePosition((prev) => ({
+        x: Math.min(Math.max(8, prev.x), Math.max(8, window.innerWidth - width - 8)),
+        y: Math.min(Math.max(8, prev.y), Math.max(8, window.innerHeight - height - 8))
+      }));
+    };
+    clampPosition();
+    window.addEventListener('resize', clampPosition);
+    return () => window.removeEventListener('resize', clampPosition);
+  }, []);
 
   useEffect(() => {
     if (!dragging) return;
@@ -386,6 +416,45 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         window.removeEventListener('offline', handleOffline);
     };
   }, [capsLock, isRunning, pyodideReady, currentIdx, answers]); // Deps for handleRun closure
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!imeFloatRef.current) return;
+      const rect = imeFloatRef.current.getBoundingClientRect();
+      const nextX = event.clientX - imeDragOffsetRef.current.x;
+      const nextY = event.clientY - imeDragOffsetRef.current.y;
+      setImePosition({
+        x: Math.min(Math.max(8, nextX), Math.max(8, window.innerWidth - rect.width - 8)),
+        y: Math.min(Math.max(8, nextY), Math.max(8, window.innerHeight - rect.height - 8))
+      });
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('ime-dragging');
+    };
+    const handleDragStart = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.ime-pill__drag')) return;
+      if (!imeFloatRef.current) return;
+      const rect = imeFloatRef.current.getBoundingClientRect();
+      imeDragOffsetRef.current = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+      document.body.classList.add('ime-dragging');
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      event.preventDefault();
+    };
+    window.addEventListener('mousedown', handleDragStart);
+    return () => {
+      window.removeEventListener('mousedown', handleDragStart);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('ime-dragging');
+    };
+  }, []);
 
   useEffect(() => {
     const electronRequire = (window as any).electronRequire || (window as any).require;
@@ -994,13 +1063,27 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
          </div>
       </div>
 
-      <div className="ime-float" title={imeName || (isChineseIme ? '中文输入法' : '英文键盘')}>
+      <div
+        ref={imeFloatRef}
+        className="ime-float"
+        style={{ left: imePosition.x, top: imePosition.y }}
+        title={imeName || (isChineseIme ? '中文输入法' : '英文键盘')}
+      >
         <div className={`ime-pill ${isChineseIme ? '' : 'ime-pill--eng'}`}>
-          <span className="ime-pill__icon">
-            <Keyboard className="w-3.5 h-3.5" />
+          <span className="ime-pill__drag" aria-hidden="true">
+            <span className="ime-pill__drag-dots">
+              <span />
+              <span />
+              <span />
+            </span>
           </span>
           <span className="ime-pill__divider" />
-          <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>CAPS</span>
+          <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
+            <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
+              {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
+            </span>
+            <span>CAPS</span>
+          </span>
           <span className="ime-pill__divider" />
           <span className="ime-pill__cell">{imePrimary}</span>
           {imeSecondary && <span className="ime-pill__cell">{imeSecondary}</span>}

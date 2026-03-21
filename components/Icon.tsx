@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 
 type IconName =
   | 'jn-logo'
+  | 'jn-logo-solid'
   | 'code'
   | 'graduation-cap'
   | 'presentation'
@@ -51,7 +52,7 @@ const computeInnerPoints = () => {
 };
 
 const Icon: React.FC<IconProps> = ({ name, className }) => {
-  const viewBox = name === 'jn-logo' ? '0 0 15.39 9.1' : '0 0 24 24';
+  const viewBox = name === 'jn-logo' || name === 'jn-logo-solid' ? '0 0 15.39 9.1' : '0 0 24 24';
   const innerPoints = useMemo(() => computeInnerPoints(), []);
 
   const renderX = (x: number, y: number, key: string) => (
@@ -304,6 +305,23 @@ const Icon: React.FC<IconProps> = ({ name, className }) => {
             <path className="final-path" d={MAIN_PATH_D} />
             <path className="final-path" d={DOT_PATH_D} />
           </g>
+        </g>
+      </svg>
+    );
+  }
+
+  if (name === 'jn-logo-solid') {
+    return (
+      <svg
+        className={className}
+        viewBox={viewBox}
+        fill="none"
+        stroke="none"
+        style={{ overflow: 'visible' }}
+      >
+        <g transform="translate(-4.79 -7.63)" className="jn-logo-group">
+          <path d={MAIN_PATH_D} fill="currentColor" />
+          <path d={DOT_PATH_D} fill="currentColor" />
         </g>
       </svg>
     );

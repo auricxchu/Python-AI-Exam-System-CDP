@@ -1,17 +1,25 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { Code, GraduationCap, Presentation, ChevronRight, ChevronLeft, Monitor, LogOut, Key, Power, AlertCircle, Loader2, Wifi, WifiOff, Sun, Moon } from 'lucide-react';
+import { Code, GraduationCap, Presentation, ChevronRight, ChevronLeft, Monitor, LogOut, Key, Power, AlertCircle, Loader2, Wifi, WifiOff, Sun, Moon, Settings2, Save, ExternalLink } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
 import { cloudService } from './services/cloudService';
-import { AiProvider, getAvailableProviders, testProviderConnection } from './services/aiService';
+import { AiProvider, AiProviderSettings, getAiSettings, getAvailableProviders, saveAiSettings, testProviderConnection } from './services/aiService';
 import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen from './components/OpeningScreen';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
+const OPENING_SEEN_KEY = 'app_opening_seen_v2';
+const providerDocs: Record<AiProvider, string> = {
+  deepseek: 'https://platform.deepseek.com/',
+  openai: 'https://platform.openai.com/api-keys',
+  qwen: 'https://help.aliyun.com/zh/model-studio/get-api-key',
+  moonshot: 'https://platform.moonshot.cn/console/api-keys',
+  gemini: 'https://aistudio.google.com/app/apikey'
+};
 
 const shuffleArray = (array: any[]) => {
   const arr = [...array];
@@ -42,6 +50,9 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('landing');
   const [config, setConfig] = useState<ExamConfig>(storageService.loadConfig());
   const [openingDone, setOpeningDone] = useState(false);
+  const [openingVariant, setOpeningVariant] = useState<'full' | 'lite'>(() => (
+    localStorage.getItem(OPENING_SEEN_KEY) === '1' ? 'lite' : 'full'
+  ));
   const [landingAnimKey, setLandingAnimKey] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem('app_theme');
@@ -71,6 +82,8 @@ export default function App() {
   const [aiGuardOpen, setAiGuardOpen] = useState(false);
   const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
   const [aiGuardMessage, setAiGuardMessage] = useState("");
+  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [apiSettings, setApiSettings] = useState<AiProviderSettings>(() => getAiSettings());
 
 
   // Student State
@@ -104,6 +117,15 @@ export default function App() {
   }, [mode]);
 
   useEffect(() => {
+    if (openingDone) return;
+    const fallbackMs = openingVariant === 'lite' ? 5600 : 12000;
+    const timer = window.setTimeout(() => {
+      setOpeningDone(true);
+    }, fallbackMs);
+    return () => window.clearTimeout(timer);
+  }, [openingDone, openingVariant]);
+
+  useEffect(() => {
     if (openingDone && mode === 'landing') {
       setLandingAnimKey((prev) => prev + 1);
     }
@@ -112,6 +134,14 @@ export default function App() {
   useEffect(() => {
     aiProviderRef.current = aiProvider;
   }, [aiProvider]);
+
+  useEffect(() => {
+    const handleStorage = () => {
+      setApiSettings(getAiSettings());
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const providerOptions: { id: AiProvider; label: string; desc: string }[] = [
         { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
@@ -155,6 +185,21 @@ export default function App() {
     );
 
     setIsCheckingProviders(false);
+  };
+
+  const handleSaveApiSettings = () => {
+    const next = saveAiSettings(apiSettings);
+    setApiSettings(next);
+    setApiSettingsOpen(false);
+    checkProviders();
+  };
+
+  const handleOpeningComplete = () => {
+    setOpeningDone(true);
+    if (openingVariant === 'full') {
+      localStorage.setItem(OPENING_SEEN_KEY, '1');
+      setOpeningVariant('lite');
+    }
   };
 
   useEffect(() => {
@@ -266,7 +311,7 @@ const requestEnterMode = (nextMode: AppMode) => {
       return;
     }
     setAiGuardNextMode(nextMode);
-    setAiGuardMessage(`${reason}这可能导致批改/生成不可用，确定继续吗？`);
+    setAiGuardMessage(`${reason}这可能导致批改或生成功能不可用，确定继续吗？`);
     setAiGuardOpen(true);
   };
 
@@ -341,7 +386,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
     // Validate Student ID (Must be 11 digits)
     if (!/^\d{11}$/.test(sid)) {
-        showAppAlert("学号格式错误：必须为11位数字");
+        showAppAlert("学号格式错误：必须为11位数字。");
         return;
     }
 
@@ -363,14 +408,14 @@ const requestEnterMode = (nextMode: AppMode) => {
       setIsCheckingNet(false);
 
       if (!isOnline) {
-          showAppAlert("网络连接检测失败。\n\n系统无法连接到必要的资源服务器 (CDN)。\n请确保设备已连接互联网，因为本系统需要在线加载 Pyodide 运行环境和编辑器资源。");
+          showAppAlert("网络连接检测失败。\n\n系统无法连接到必要的资源服务器（CDN）。\n请确认设备已连接互联网，因为本系统需要在线加载 Pyodide 运行环境和编辑器资源。");
           return;
       }
 
       setStudentUser({ name, studentId: sid, joinedAt: new Date().toISOString() });
       const questions = generateQuestions(config.questionBank, config.ruleSettings);
       if (questions.length === 0) {
-        showAppAlert("组卷失败: 题库题目不足，请联系老师。");
+        showAppAlert("组卷失败：题库题目不足，请联系老师。");
         return;
       }
       setExamQuestions(questions);
@@ -429,8 +474,9 @@ const requestEnterMode = (nextMode: AppMode) => {
       {!openingDone && (
         <OpeningScreen
           theme={theme}
+          variant={openingVariant}
           onInit={runOpeningInit}
-          onComplete={() => setOpeningDone(true)}
+          onComplete={handleOpeningComplete}
         />
       )}
       <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-start px-6 pt-16 pb-8 relative overflow-hidden font-sans text-slate-200">
@@ -483,6 +529,75 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
+      <Modal
+        isOpen={apiSettingsOpen}
+        onClose={() => setApiSettingsOpen(false)}
+        title="API 设置"
+        panelClassName="w-[92vw] max-w-[600px]"
+        bodyClassName="h-[46vh] overflow-y-auto custom-scrollbar"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setApiSettingsOpen(false)}>取消</Button>
+            <Button onClick={handleSaveApiSettings}>
+              <Save className="w-4 h-4" />
+              保存
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 pr-2">
+          {providerOptions.map((option) => {
+            const status = providerStatus[option.id];
+            const statusLabel = status === 'ok'
+              ? '可用'
+              : status === 'fail'
+                ? '不可用'
+                : status === 'checking'
+                  ? '检测中...'
+                  : '未检测';
+
+            return (
+              <div key={`api-simple-${option.id}`} className="rounded-xl border border-slate-700/70 bg-slate-900/40 p-4">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                        <span>{option.label}</span>
+                        <a
+                          href={providerDocs[option.id]}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-slate-400 hover:text-slate-200 transition-colors"
+                          title={`${option.label} API 文档`}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">{statusLabel}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-400">API Key</label>
+                    <Input
+                      type="password"
+                      value={apiSettings[option.id].apiKey}
+                      onChange={(e) => setApiSettings((prev) => ({
+                        ...prev,
+                        [option.id]: {
+                          ...prev[option.id],
+                          apiKey: e.target.value
+                        }
+                      }))}
+                      placeholder={`输入 ${option.label} API Key`}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
             <div key={`landing-${landingAnimKey}`} className={`landing-content pt-24 pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           {mode === 'landing' && (
@@ -500,13 +615,23 @@ const requestEnterMode = (nextMode: AppMode) => {
                 <div className="model-picker">
                   <div className="model-picker__header">
                     <div className="model-picker__title">{modelSelectorCopy.title}</div>
-                    <button
-                      type="button"
-                      onClick={checkProviders}
-                      className="model-picker__check"
-                    >
-                      {isCheckingProviders ? modelSelectorCopy.checking : modelSelectorCopy.recheck}
-                    </button>
+                    <div className="model-picker__actions">
+                      <button
+                        type="button"
+                        onClick={() => setApiSettingsOpen(true)}
+                        className="model-picker__check"
+                      >
+                        <Settings2 className="w-3.5 h-3.5" />
+                        API 设置
+                      </button>
+                      <button
+                        type="button"
+                        onClick={checkProviders}
+                        className="model-picker__check"
+                      >
+                        {isCheckingProviders ? modelSelectorCopy.checking : modelSelectorCopy.recheck}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="model-picker__row">
@@ -565,7 +690,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
                   <div className="model-picker__meta">
                     <span className="model-picker__meta-name">
-                      {providerOptions.find(option => option.id === aiProvider)?.desc}
+                      {apiSettings[aiProvider]?.model || providerOptions.find(option => option.id === aiProvider)?.desc}
                     </span>
                     <span className="model-picker__meta-status">
                       {modelSelectorCopy.availability} / {providerStatus[aiProvider] === 'ok'
@@ -622,7 +747,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                    className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
                  >
                    <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                   <span className="text-sm font-medium">退出系统</span>
+                    <span className="text-sm font-medium">退出系统</span>
                  </button>
               </div>
             </>
@@ -642,7 +767,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                 </div>
                 <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                  管理题库、配置试卷规则、查看考试数据与成绩报表。
+                  管理题库、配置试卷规则、查看考试数据与成绩报告。
                 </p>
                 <div className="space-y-3 text-xs text-slate-400">
                   <div className="flex items-center gap-2">
@@ -746,3 +871,4 @@ const requestEnterMode = (nextMode: AppMode) => {
     </>
   );
 }
+

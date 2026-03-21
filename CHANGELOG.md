@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Refine the API settings modal into a simpler desktop-style layout with unified scrollbar styling.
+- Add lite opening screen flow and keep the full opening animation for first launch.
+- Fix lite opening logo sizing/centering and add a timed fallback so the app cannot get stuck on the splash screen.
+- Replace the IME drag handle with a lighter vertical three-dot grip.
+- Clean up multiple UTF-8/garbled UI strings in `App.tsx`.
 - Improve IME status handling with TSF probing, shift-tap state, and bottom-right status bar (now includes CAPS).
 - Remove duplicate IME status bar from the top header.
 - Restore StudentExam.tsx to valid UTF-8 after encoding corruption.

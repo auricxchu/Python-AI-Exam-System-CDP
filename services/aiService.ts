@@ -25,6 +25,88 @@ type ProviderStatus = "ok" | "fail";
 
 const hasKey = (val?: string) => !!val && val.trim().length > 0;
 
+export interface AiProviderConfig {
+  apiKey: string;
+  model: string;
+}
+
+export type AiProviderSettings = Record<AiProvider, AiProviderConfig>;
+
+const AI_SETTINGS_STORAGE_KEY = "app_ai_settings";
+
+const defaultProviderModels: Record<AiProvider, string> = {
+  deepseek: "deepseek-chat",
+  gemini: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+  openai: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  qwen: process.env.QWEN_MODEL || "qwen-plus",
+  moonshot: process.env.MOONSHOT_MODEL || "moonshot-v1-8k"
+};
+
+const envProviderKeys: Record<AiProvider, string> = {
+  deepseek: process.env.DEEPSEEK_API_KEY || "",
+  gemini: process.env.API_KEY || "",
+  openai: process.env.OPENAI_API_KEY || "",
+  qwen: process.env.QWEN_API_KEY || "",
+  moonshot: process.env.MOONSHOT_API_KEY || ""
+};
+
+const buildDefaultSettings = (): AiProviderSettings => ({
+  deepseek: { apiKey: envProviderKeys.deepseek, model: defaultProviderModels.deepseek },
+  gemini: { apiKey: envProviderKeys.gemini, model: defaultProviderModels.gemini },
+  openai: { apiKey: envProviderKeys.openai, model: defaultProviderModels.openai },
+  qwen: { apiKey: envProviderKeys.qwen, model: defaultProviderModels.qwen },
+  moonshot: { apiKey: envProviderKeys.moonshot, model: defaultProviderModels.moonshot }
+});
+
+const sanitizeSettings = (raw: Partial<Record<AiProvider, Partial<AiProviderConfig>>> | null | undefined): AiProviderSettings => {
+  const defaults = buildDefaultSettings();
+  if (!raw) return defaults;
+  return {
+    deepseek: {
+      apiKey: raw.deepseek?.apiKey?.trim?.() ?? defaults.deepseek.apiKey,
+      model: raw.deepseek?.model?.trim?.() || defaults.deepseek.model
+    },
+    gemini: {
+      apiKey: raw.gemini?.apiKey?.trim?.() ?? defaults.gemini.apiKey,
+      model: raw.gemini?.model?.trim?.() || defaults.gemini.model
+    },
+    openai: {
+      apiKey: raw.openai?.apiKey?.trim?.() ?? defaults.openai.apiKey,
+      model: raw.openai?.model?.trim?.() || defaults.openai.model
+    },
+    qwen: {
+      apiKey: raw.qwen?.apiKey?.trim?.() ?? defaults.qwen.apiKey,
+      model: raw.qwen?.model?.trim?.() || defaults.qwen.model
+    },
+    moonshot: {
+      apiKey: raw.moonshot?.apiKey?.trim?.() ?? defaults.moonshot.apiKey,
+      model: raw.moonshot?.model?.trim?.() || defaults.moonshot.model
+    }
+  };
+};
+
+export const getAiSettings = (): AiProviderSettings => {
+  if (typeof window === "undefined") {
+    return buildDefaultSettings();
+  }
+  try {
+    const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+    if (!raw) return buildDefaultSettings();
+    return sanitizeSettings(JSON.parse(raw));
+  } catch (error) {
+    console.error("Failed to load AI settings:", error);
+    return buildDefaultSettings();
+  }
+};
+
+export const saveAiSettings = (settings: AiProviderSettings): AiProviderSettings => {
+  const sanitized = sanitizeSettings(settings);
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(sanitized));
+  }
+  return sanitized;
+};
+
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 6000): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -39,16 +121,9 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 6000): Promise<T>
   }
 };
 
-const providerKeys: Record<AiProvider, string | undefined> = {
-  deepseek: process.env.DEEPSEEK_API_KEY,
-  gemini: process.env.API_KEY,
-  openai: process.env.OPENAI_API_KEY,
-  qwen: process.env.QWEN_API_KEY,
-  moonshot: process.env.MOONSHOT_API_KEY
-};
-
 export const getAvailableProviders = (): AiProvider[] => {
-  return (Object.keys(providerKeys) as AiProvider[]).filter((key) => hasKey(providerKeys[key]));
+  const settings = getAiSettings();
+  return (Object.keys(settings) as AiProvider[]).filter((key) => hasKey(settings[key].apiKey));
 };
 
 const normalizeDifficulty = (input: string | undefined): Difficulty => {
@@ -104,6 +179,7 @@ export const generateQuestion = async (
   provider: AiProvider = "deepseek"
 ): Promise<GeneratedQuestion | null> => {
   const resolved = provider;
+  const settings = getAiSettings();
 
   const systemPrompt = `你是 Python 考试题目生成器。仅返回 JSON，不要输出 Markdown。
 JSON 字段必须包含：
@@ -133,9 +209,9 @@ ${currentSnapshot}
   try {
     let raw: any;
     if (resolved === "gemini") {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: settings.gemini.apiKey });
       const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+        model: settings.gemini.model,
         contents: `${systemPrompt}\n\n${userPrompt}`,
         config: {
           responseMimeType: "application/json",
@@ -155,36 +231,36 @@ ${currentSnapshot}
     } else if (resolved === "deepseek") {
       raw = await requestOpenAIJson(
         "Deepseek",
-        process.env.DEEPSEEK_API_KEY as string,
+        settings.deepseek.apiKey,
         "https://api.deepseek.com/chat/completions",
-        "deepseek-chat",
+        settings.deepseek.model,
         systemPrompt,
         userPrompt
       );
     } else if (resolved === "openai") {
       raw = await requestOpenAIJson(
         "OpenAI",
-        process.env.OPENAI_API_KEY as string,
+        settings.openai.apiKey,
         "https://api.openai.com/v1/chat/completions",
-        process.env.OPENAI_MODEL || "gpt-4o-mini",
+        settings.openai.model,
         systemPrompt,
         userPrompt
       );
     } else if (resolved === "qwen") {
       raw = await requestOpenAIJson(
         "Qwen",
-        process.env.QWEN_API_KEY as string,
+        settings.qwen.apiKey,
         "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-        process.env.QWEN_MODEL || "qwen-plus",
+        settings.qwen.model,
         systemPrompt,
         userPrompt
       );
     } else {
       raw = await requestOpenAIJson(
         "Moonshot",
-        process.env.MOONSHOT_API_KEY as string,
+        settings.moonshot.apiKey,
         "https://api.moonshot.cn/v1/chat/completions",
-        process.env.MOONSHOT_MODEL || "moonshot-v1-8k",
+        settings.moonshot.model,
         systemPrompt,
         userPrompt
       );
@@ -235,7 +311,8 @@ const pingOpenAICompatible = async (
 };
 
 export const testProviderConnection = async (provider: AiProvider): Promise<boolean> => {
-  const key = providerKeys[provider];
+  const settings = getAiSettings();
+  const key = settings[provider].apiKey;
   if (!hasKey(key)) return false;
   const apiKey = key as string;
 
@@ -244,7 +321,7 @@ export const testProviderConnection = async (provider: AiProvider): Promise<bool
       const ai = new GoogleGenAI({ apiKey });
       await withTimeout(
         ai.models.generateContent({
-          model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+          model: settings.gemini.model,
           contents: "ping",
           config: { responseMimeType: "text/plain" }
         }),
@@ -258,19 +335,19 @@ export const testProviderConnection = async (provider: AiProvider): Promise<bool
   }
 
   if (provider === "deepseek") {
-    return (await pingOpenAICompatible("Deepseek", apiKey, "https://api.deepseek.com/chat/completions", "deepseek-chat")) === "ok";
+    return (await pingOpenAICompatible("Deepseek", apiKey, "https://api.deepseek.com/chat/completions", settings.deepseek.model)) === "ok";
   }
 
   if (provider === "openai") {
-    return (await pingOpenAICompatible("OpenAI", apiKey, "https://api.openai.com/v1/chat/completions", process.env.OPENAI_MODEL || "gpt-4o-mini")) === "ok";
+    return (await pingOpenAICompatible("OpenAI", apiKey, "https://api.openai.com/v1/chat/completions", settings.openai.model)) === "ok";
   }
 
   if (provider === "qwen") {
-    return (await pingOpenAICompatible("Qwen", apiKey, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", process.env.QWEN_MODEL || "qwen-plus")) === "ok";
+    return (await pingOpenAICompatible("Qwen", apiKey, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", settings.qwen.model)) === "ok";
   }
 
   if (provider === "moonshot") {
-    return (await pingOpenAICompatible("Moonshot", apiKey, "https://api.moonshot.cn/v1/chat/completions", process.env.MOONSHOT_MODEL || "moonshot-v1-8k")) === "ok";
+    return (await pingOpenAICompatible("Moonshot", apiKey, "https://api.moonshot.cn/v1/chat/completions", settings.moonshot.model)) === "ok";
   }
 
   return false;
@@ -287,6 +364,7 @@ export const gradeQuestion = async (
   provider: AiProvider = "deepseek"
 ): Promise<GradingResult> => {
   const available = getAvailableProviders();
+  const settings = getAiSettings();
 
   if (!available.includes(provider)) {
     return {
@@ -311,15 +389,15 @@ export const gradeQuestion = async (
   }
 
   if (selected === "deepseek") {
-    return await gradeWithDeepseek(title, description, code);
+    return await gradeWithDeepseek(title, description, code, settings.deepseek.apiKey, settings.deepseek.model);
   }
 
   if (selected === "openai") {
     return await gradeWithOpenAICompatible(
       "OpenAI",
-      process.env.OPENAI_API_KEY as string,
+      settings.openai.apiKey,
       "https://api.openai.com/v1/chat/completions",
-      process.env.OPENAI_MODEL || "gpt-4o-mini",
+      settings.openai.model,
       title,
       description,
       code
@@ -329,9 +407,9 @@ export const gradeQuestion = async (
   if (selected === "qwen") {
     return await gradeWithOpenAICompatible(
       "Qwen",
-      process.env.QWEN_API_KEY as string,
+      settings.qwen.apiKey,
       "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-      process.env.QWEN_MODEL || "qwen-plus",
+      settings.qwen.model,
       title,
       description,
       code
@@ -341,16 +419,16 @@ export const gradeQuestion = async (
   if (selected === "moonshot") {
     return await gradeWithOpenAICompatible(
       "Moonshot",
-      process.env.MOONSHOT_API_KEY as string,
+      settings.moonshot.apiKey,
       "https://api.moonshot.cn/v1/chat/completions",
-      process.env.MOONSHOT_MODEL || "moonshot-v1-8k",
+      settings.moonshot.model,
       title,
       description,
       code
     );
   }
 
-  return await gradeWithGemini(title, description, code);
+  return await gradeWithGemini(title, description, code, settings.gemini.apiKey, settings.gemini.model);
 };
 
 /**
@@ -419,8 +497,7 @@ async function gradeWithOpenAICompatible(
 /**
  * Implementation for Deepseek API (OpenAI Compatible)
  */
-async function gradeWithDeepseek(title: string, description: string, code: string): Promise<GradingResult> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+async function gradeWithDeepseek(title: string, description: string, code: string, apiKey: string, model: string): Promise<GradingResult> {
   const url = "https://api.deepseek.com/chat/completions";
 
   const systemPrompt = buildSystemPrompt();
@@ -434,7 +511,7 @@ async function gradeWithDeepseek(title: string, description: string, code: strin
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
@@ -477,11 +554,11 @@ async function gradeWithDeepseek(title: string, description: string, code: strin
 /**
  * Implementation for Google Gemini API
  */
-async function gradeWithGemini(title: string, description: string, code: string): Promise<GradingResult> {
+async function gradeWithGemini(title: string, description: string, code: string, apiKey: string, model: string): Promise<GradingResult> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model,
       contents: `Grade this Python code for the problem "${title}".
       
       Problem Description:

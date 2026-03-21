@@ -8,9 +8,20 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   closeOnOutsideClick?: boolean;
+  panelClassName?: string;
+  bodyClassName?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, closeOnOutsideClick = true }) => {
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  closeOnOutsideClick = true,
+  panelClassName = "",
+  bodyClassName = ""
+}) => {
   if (!isOpen) return null;
 
   return (
@@ -19,7 +30,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer,
       onClick={closeOnOutsideClick ? onClose : undefined}
     >
       <div 
-        className="bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className={`bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 ${panelClassName}`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-900/50">
@@ -29,7 +40,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer,
           </button>
         </div>
         
-        <div className="p-6 text-slate-300">
+        <div className={`p-6 text-slate-300 ${bodyClassName}`}>
           {children}
         </div>
 
