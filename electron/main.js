@@ -11,6 +11,28 @@ const isWindows = process.platform === 'win32';
 const imageCacheDir = path.join(app.getPath('userData'), 'image-cache');
 let lastImeStatus = null;
 
+const sanitizeFileName = (value) => {
+  const normalized = String(value || '').trim();
+  const safe = normalized.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  return safe || 'ExamReport.txt';
+};
+
+const getUniqueFilePath = async (dirPath, fileName) => {
+  const parsed = path.parse(fileName);
+  let attempt = 0;
+
+  while (true) {
+    const suffix = attempt === 0 ? '' : ` (${attempt})`;
+    const candidate = path.join(dirPath, `${parsed.name}${suffix}${parsed.ext || '.txt'}`);
+    try {
+      await fsp.access(candidate, fs.constants.F_OK);
+      attempt += 1;
+    } catch {
+      return candidate;
+    }
+  }
+};
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'appimg',
@@ -180,6 +202,20 @@ app.whenReady().then(() => {
 
   ipcMain.handle('ime-status-get', async () => {
     return lastImeStatus;
+  });
+
+  ipcMain.handle('export-report-to-desktop', async (_event, payload) => {
+    try {
+      const filename = sanitizeFileName(payload?.filename);
+      const content = typeof payload?.content === 'string' ? payload.content : '';
+      const desktopDir = app.getPath('desktop');
+      const outputPath = await getUniqueFilePath(desktopDir, path.extname(filename) ? filename : `${filename}.txt`);
+      await fsp.writeFile(outputPath, content, 'utf8');
+      return { success: true, path: outputPath };
+    } catch (error) {
+      console.error('Export report to desktop failed:', error);
+      return { success: false, error: error.message || '导出失败' };
+    }
   });
 
   createWindow();

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Rework the student results page into separate left/right cards with improved visual hierarchy and teacher-dashboard-aligned question panels.
+- Add per-question review expansion with question content, embedded images, AI summary blocks, stacked student/reference answers, and fixed image zoom preview.
+- Add exam-level review summary generation, including a dedicated all-blank submission branch and AI reference answers for blank questions.
+- Improve report export flow: auto-export failed cloud uploads to the desktop in Electron and add a manual "导出成绩单" action on the results page.
+- Refine results-page spacing, contrast, score typography, hover states, and action button layout across dark/light themes.
+- Tighten Tailwind content scanning and clean up App/type definitions to reduce dead code and unsafe typing.
+
 - Refine the API settings modal into a simpler desktop-style layout with unified scrollbar styling.
 - Add lite opening screen flow and keep the full opening animation for first launch.
 - Fix lite opening logo sizing/centering and add a timed fallback so the app cannot get stuck on the splash screen.

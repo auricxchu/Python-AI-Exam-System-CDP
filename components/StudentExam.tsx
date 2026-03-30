@@ -1,16 +1,16 @@
 ﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen
+  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen
 } from 'lucide-react';
-import { ExamConfig, Question, GradingResult, UserProfile, ExamReport } from '../types';
+import { ExamConfig, Question, GradingResult, UserProfile, ExamReport, ExamReviewSummary } from '../types';
 import { Button } from './ui';
 import CodeEditor from './CodeEditor';
 import TerminalOutput from './TerminalOutput';
 import Modal from './Modal';
 import ImageModal from './ImageModal'; // Import ImageModal
 import CachedImage from './CachedImage';
-import { gradeQuestion, AiProvider } from '../services/aiService';
+import { gradeQuestion, AiProvider, buildExamReviewSummary, createBlankGradingResult, generateReferenceAnswer } from '../services/aiService';
 import { runPythonCodeLocal, initPyodide, resetPyodideWorker, abortPyodideRun, resetPyodideRuntime } from '../services/pyodideService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
@@ -46,7 +46,12 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [finalScore, setFinalScore] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string} | null>(null);
   const [examFinishedAt, setExamFinishedAt] = useState<string | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<ExamReviewSummary | null>(null);
+  const [expandedResultId, setExpandedResultId] = useState<string | null>(null);
   const [usedProvider, setUsedProvider] = useState<AiProvider>(aiProvider);
+  const [reportExportMeta, setReportExportMeta] = useState<{ filename: string; content: string } | null>(null);
+  const [desktopExportStatus, setDesktopExportStatus] = useState<{ success: boolean; path?: string; error?: string; auto?: boolean } | null>(null);
+  const [isExportingReport, setIsExportingReport] = useState(false);
   const providerLabel = (value: AiProvider) => {
     switch (value) {
       case 'deepseek':
@@ -113,6 +118,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
   // Image Loading State (per question)
   const [imageError, setImageError] = useState(false);
+  const [resultImageErrors, setResultImageErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     // Init answers
@@ -546,7 +552,90 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
   };
 
-  const generateTxtReport = (score: number, gradingResults: Record<string, GradingResult>, startTime: string, endTime: string) => {
+  const getQuestionAwardedPoints = (result: GradingResult, questionPoints?: number) => {
+    return Math.round((result.score / 100) * (questionPoints || 0));
+  };
+
+  const getDeductionToneClass = (category: string, isLightTheme = false) => {
+    if (isLightTheme) {
+      switch (category) {
+        case 'syntax':
+          return 'bg-amber-50 text-amber-700 border-amber-200';
+        case 'logic':
+          return 'bg-rose-50 text-rose-700 border-rose-200';
+        case 'runtime':
+          return 'bg-orange-50 text-orange-700 border-orange-200';
+        case 'style':
+          return 'bg-sky-50 text-sky-700 border-sky-200';
+        default:
+          return 'bg-slate-100 text-slate-700 border-slate-200';
+      }
+    }
+
+    switch (category) {
+      case 'syntax':
+        return 'bg-amber-500/10 text-amber-300 border-amber-500/20';
+      case 'logic':
+        return 'bg-rose-500/10 text-rose-300 border-rose-500/20';
+      case 'runtime':
+        return 'bg-orange-500/10 text-orange-300 border-orange-500/20';
+      case 'style':
+        return 'bg-sky-500/10 text-sky-300 border-sky-500/20';
+      default:
+        return 'bg-slate-700/50 text-slate-300 border-slate-600/50';
+    }
+  };
+
+  const getSummaryPanelTone = (
+    tone: 'emerald' | 'rose' | 'blue',
+    isLightTheme = false
+  ) => {
+    if (isLightTheme) {
+      switch (tone) {
+        case 'emerald':
+          return {
+            panel: 'bg-emerald-50 border-emerald-200',
+            title: 'text-emerald-700'
+          };
+        case 'rose':
+          return {
+            panel: 'bg-rose-50 border-rose-200',
+            title: 'text-rose-700'
+          };
+        case 'blue':
+          return {
+            panel: 'bg-blue-50 border-blue-200',
+            title: 'text-blue-700'
+          };
+      }
+    }
+
+    switch (tone) {
+      case 'emerald':
+        return {
+          panel: 'bg-emerald-500/10 border-emerald-500/20',
+          title: 'text-emerald-300'
+        };
+      case 'rose':
+        return {
+          panel: 'bg-rose-500/10 border-rose-500/20',
+          title: 'text-rose-300'
+        };
+      case 'blue':
+        return {
+          panel: 'bg-blue-500/10 border-blue-500/20',
+          title: 'text-blue-300'
+        };
+    }
+  };
+
+  const generateTxtReport = (
+    score: number,
+    gradingResults: Record<string, GradingResult>,
+    startTime: string,
+    endTime: string,
+    examSummary: ExamReviewSummary | null
+  ) => {
     const lines = [];
     lines.push("================================================================");
     lines.push(`               PYTHON \u667a\u80fd\u8003\u8bd5\u7cfb\u7edf - \u8003\u8bd5\u62a5\u544a`);
@@ -557,7 +646,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     lines.push(`\u5f00\u59cb\u65f6\u95f4: ${new Date(startTime).toLocaleString()}`);
     lines.push(`\u5b8c\u6210\u65f6\u95f4: ${new Date(endTime).toLocaleString()}`);
     lines.push(`\u6700\u7ec8\u5f97\u5206: ${score} \u5206`);
-    lines.push("================================================================\n");
+    lines.push("================================================================");
+    if (examSummary) {
+      lines.push("[阅卷总结]");
+      lines.push(`总体评价: ${examSummary.overview}`);
+      lines.push(`做得好的地方: ${examSummary.strengths.join("；")}`);
+      lines.push(`主要问题: ${examSummary.weaknesses.join("；")}`);
+      lines.push(`下一步建议: ${examSummary.nextSteps.join("；")}`);
+      lines.push("================================================================");
+    }
+    lines.push("");
 
     questions.forEach((q, idx) => {
       const res = gradingResults[q.id];
@@ -565,10 +663,25 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       lines.push(`----------------------------------------------------------------`);
       lines.push(`[学生代码]`);
       lines.push(answers[q.id] || "(未作答)");
-      lines.push(`\n[运行得分]: ${res.score} / 100`);
-      lines.push(`[逻辑反馈]: ${res.logic_feedback}`);
-      lines.push(`[改进建议]: ${res.suggestion}`);
-      lines.push(`\n`);
+      lines.push("");
+      lines.push(`[标准得分]: ${res.score} / 100`);
+      lines.push(`[关键路径命中]: ${res.pathHit ? "是" : "否"}`);
+      if (res.detectedTags.length > 0) {
+        lines.push("[扣分明细]");
+        res.detectedTags.forEach((tag) => {
+          lines.push(`- ${tag.label} (-${tag.weight}%): ${tag.evidence}`);
+        });
+      } else {
+        lines.push("[扣分明细]: 未命中固定扣分标签");
+      }
+      lines.push(`[做得好的地方]: ${res.summary.highlights}`);
+      lines.push(`[主要问题]: ${res.summary.mainIssues}`);
+      lines.push(`[下一步建议]: ${res.summary.nextSteps}`);
+      if (res.correctedAnswer) {
+        lines.push(`[AI 修正版参考答案]`);
+        lines.push(res.correctedAnswer);
+      }
+      lines.push("");
     });
 
     lines.push("================================================================");
@@ -589,7 +702,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       if (!code || code === q.template) {
         return { 
           id: q.id, 
-          result: { passed: false, score: 0, logic_feedback: "未作答", quality_feedback: "N/A", suggestion: "下次尝试一下吧。" } as GradingResult 
+          result: createBlankGradingResult()
         };
       }
       const result = await gradeQuestion(q.title, q.description, code, resolvedProvider);
@@ -607,18 +720,42 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       score += (item.result.score / 100) * points;
     });
 
-    const finalCalculatedScore = Math.round(score);
-    setResults(newResults);
-    setFinalScore(finalCalculatedScore);
-    
     // Step 2: Generate Report Content
     setSubmissionStep("generating");
-    await new Promise(r => setTimeout(r, 500)); 
+    await new Promise(r => setTimeout(r, 500));
+
+    const blankQuestions = questions.filter((question) => newResults[question.id]?.blank);
+    if (blankQuestions.length > 0) {
+      const referenceAnswers = await Promise.all(
+        blankQuestions.map(async (question) => ({
+          id: question.id,
+          correctedAnswer: await generateReferenceAnswer(
+            question.title,
+            question.description,
+            question.template,
+            resolvedProvider
+          )
+        }))
+      );
+
+      referenceAnswers.forEach(({ id, correctedAnswer }) => {
+        if (!correctedAnswer) return;
+        newResults[id] = createBlankGradingResult(correctedAnswer);
+      });
+    }
+
+    const finalCalculatedScore = Math.round(score);
+    const computedReviewSummary = buildExamReviewSummary(newResults, questions);
+    setResults(newResults);
+    setFinalScore(finalCalculatedScore);
+    setReviewSummary(computedReviewSummary);
+    setExpandedResultId(questions[0]?.id || null);
     
     const finishedAt = new Date().toISOString();
     setExamFinishedAt(finishedAt);
-    const txtContent = generateTxtReport(finalCalculatedScore, newResults, user.joinedAt, finishedAt);
+    const txtContent = generateTxtReport(finalCalculatedScore, newResults, user.joinedAt, finishedAt, computedReviewSummary);
     const filename = `${user.name}_${user.studentId}_ExamReport.txt`;
+    setReportExportMeta({ filename, content: txtContent });
     
     // Step 3: Cloud Upload
     setSubmissionStep("uploading");
@@ -632,12 +769,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       studentName: user.name,
       studentId: user.studentId,
       results: newResults,
+      reviewSummary: computedReviewSummary,
       questions,
       answers
     };
 
     const uploadResult = await cloudService.uploadExamReport(user.studentId, filename, txtContent, reportData);
     setUploadStatus(uploadResult);
+    if (!uploadResult.success) {
+      await exportReportToDesktop(filename, txtContent, true);
+    }
 
     setSubmissionStep("done");
     setExamFinished(true);
@@ -658,6 +799,45 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     return `${url}${separator}t=${cacheBustToken}`; 
   };
 
+  const exportReportToDesktop = async (filename: string, content: string, auto = false) => {
+    setIsExportingReport(true);
+    try {
+      const electronRequire = (window as any).electronRequire || (window as any).require;
+      if (electronRequire) {
+        const { ipcRenderer } = electronRequire('electron');
+        const result = await ipcRenderer.invoke('export-report-to-desktop', { filename, content });
+        setDesktopExportStatus({
+          success: !!result?.success,
+          path: result?.path,
+          error: result?.error,
+          auto
+        });
+        return result;
+      }
+
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+
+      const fallbackResult = { success: true, path: '浏览器下载目录' };
+      setDesktopExportStatus({ ...fallbackResult, auto });
+      return fallbackResult;
+    } catch (error: any) {
+      const message = error?.message || '导出失败';
+      const failedResult = { success: false, error: message };
+      setDesktopExportStatus({ ...failedResult, auto });
+      return failedResult;
+    } finally {
+      setIsExportingReport(false);
+    }
+  };
+
   if (isSubmitting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center text-white space-y-6">
@@ -671,11 +851,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
            <div className="flex flex-col gap-2 text-slate-400 text-sm mt-4 min-w-[200px] text-left">
               <div className={`flex items-center gap-2 ${submissionStep === 'grading' ? 'text-blue-400 animate-pulse' : submissionStep === 'generating' || submissionStep === 'uploading' ? 'text-green-400' : 'text-slate-600'}`}>
                  {submissionStep === 'grading' ? <Loader2 className="w-4 h-4 animate-spin"/> : <CheckCircle className="w-4 h-4"/>} 
-                 AI 智能批改中
+                 AI 标签识别中
               </div>
               <div className={`flex items-center gap-2 ${submissionStep === 'generating' ? 'text-blue-400 animate-pulse' : submissionStep === 'uploading' ? 'text-green-400' : 'text-slate-600'}`}>
                  {submissionStep === 'generating' ? <Loader2 className="w-4 h-4 animate-spin"/> : <FileText className="w-4 h-4"/>} 
-                 生成考试数据
+                 生成阅卷报告
               </div>
               <div className={`flex items-center gap-2 ${submissionStep === 'uploading' ? 'text-blue-400 animate-pulse' : 'text-slate-600'}`}>
                  {submissionStep === 'uploading' ? <Loader2 className="w-4 h-4 animate-spin"/> : <CloudUpload className="w-4 h-4"/>} 
@@ -688,16 +868,84 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   }
 
   if (examFinished) {
+    const isLightTheme = theme === 'light';
+    const pageClass = isLightTheme
+      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-hidden'
+      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-hidden';
+    const shellClass = 'max-w-[1780px] w-full relative z-10 animate-in fade-in zoom-in-95 duration-500';
+    const asideClass = 'w-full max-w-[430px]';
+    const asideCardClass = isLightTheme
+      ? 'rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.10)] p-8 xl:p-9'
+      : 'rounded-3xl border border-slate-700/80 bg-slate-950/65 shadow-[0_18px_48px_rgba(2,6,23,0.35)] p-8 xl:p-9';
+    const rightCardClass = isLightTheme
+      ? 'rounded-[28px] border border-slate-200 bg-white/90 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-md overflow-hidden'
+      : 'rounded-[28px] border border-slate-700/50 bg-slate-900/80 shadow-2xl backdrop-blur-md overflow-hidden';
+    const rightPaneClass = isLightTheme
+      ? 'p-6 xl:p-8 max-h-[calc(100vh-96px)] overflow-y-auto custom-scrollbar bg-slate-50/70'
+      : 'p-6 xl:p-8 max-h-[calc(100vh-96px)] overflow-y-auto custom-scrollbar bg-slate-900/30';
+    const softPanelClass = isLightTheme
+      ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]'
+      : 'rounded-2xl border border-slate-700/80 bg-slate-800/55';
+    const textPrimaryClass = isLightTheme ? 'text-slate-900' : 'text-white';
+    const textMutedClass = isLightTheme ? 'text-slate-600' : 'text-slate-400';
+    const summaryListClass = isLightTheme ? 'text-slate-700' : 'text-slate-300';
+    const codeBlockClass = isLightTheme
+      ? 'mt-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 p-4 text-xs leading-6 whitespace-pre-wrap break-all custom-scrollbar max-h-80 overflow-auto'
+      : 'mt-2 rounded-xl border border-slate-800 bg-slate-950/75 text-slate-200 p-4 text-xs leading-6 whitespace-pre-wrap break-all custom-scrollbar max-h-80 overflow-auto';
+    const countPillClass = isLightTheme
+      ? 'text-xs px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600'
+      : 'text-xs px-3 py-1 rounded-full border border-slate-700 bg-slate-900/60 text-slate-400';
+    const uploadPillClass = uploadStatus?.success
+      ? (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200'
+        : 'flex items-center gap-2 text-xs bg-blue-900/20 text-blue-400 px-3 py-1.5 rounded-full border border-blue-900/50')
+      : (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border border-amber-200'
+        : 'flex items-center gap-2 text-xs bg-orange-900/20 text-orange-400 px-3 py-1.5 rounded-full border border-orange-900/50');
+    const resultCardClass = isLightTheme
+      ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)] overflow-hidden transition-colors hover:border-slate-300'
+      : 'rounded-2xl border border-slate-700/80 bg-slate-800/55 overflow-hidden transition-colors hover:border-slate-600';
+    const resultHeaderClass = isLightTheme
+      ? 'w-full flex flex-col gap-4 px-5 py-4 text-left lg:flex-row lg:items-start lg:justify-between'
+      : 'w-full flex flex-col gap-4 px-5 py-4 text-left lg:flex-row lg:items-start lg:justify-between';
+    const resultDividerClass = isLightTheme
+      ? 'border-t border-slate-200 pt-5'
+      : 'border-t border-slate-800/80 pt-5';
+    const metaChipClass = isLightTheme
+      ? 'text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700'
+      : 'text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300';
+    const pathHitChipClass = isLightTheme
+      ? 'text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200'
+      : 'text-xs bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/20';
+    const noDeductionChipClass = isLightTheme
+      ? 'text-xs px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700'
+      : 'text-xs px-2.5 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300';
+    const floorChipClass = isLightTheme
+      ? 'text-xs px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-700'
+      : 'text-xs px-2.5 py-1 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-300';
+    const scoreClass = (passed: boolean) =>
+      isLightTheme
+        ? (passed ? 'text-emerald-700' : 'text-red-700')
+        : (passed ? 'text-green-400' : 'text-red-400');
+    const chevronWrapClass = isLightTheme
+      ? 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-500'
+      : 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400';
+    const asideDividerClass = isLightTheme ? 'border-slate-300/80' : 'border-slate-700/80';
+    const exportPillClass = desktopExportStatus?.success
+      ? (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-200'
+        : 'flex items-center gap-2 text-xs bg-emerald-900/20 text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-900/50')
+      : (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-rose-50 text-rose-700 px-3 py-1.5 rounded-full border border-rose-200'
+        : 'flex items-center gap-2 text-xs bg-rose-900/20 text-rose-300 px-3 py-1.5 rounded-full border border-rose-900/50');
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-8 font-sans text-slate-200 flex flex-col items-center justify-center relative overflow-hidden">
+      <div className={pageClass}>
         {/* Background FX (Matching App.tsx) */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
            <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] bg-indigo-500/10 rounded-full blur-[120px]" />
            <div className="absolute -bottom-[20%] -right-[10%] w-[70%] h-[70%] bg-purple-500/10 rounded-full blur-[120px]" />
         </div>
-
-        <div className="absolute top-4 right-4 z-20">
-</div>
 
         {/* Info Modal for Exit Warning */}
         <Modal 
@@ -707,103 +955,303 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           footer={<Button onClick={() => setInfoModalOpen(false)}>{'\u77e5\u9053\u4e86'}</Button>}
         >
           <div className="flex items-start gap-4">
-             <div className="p-2 bg-slate-700 rounded-full shrink-0">
+             <div className={`p-2 rounded-full shrink-0 ${isLightTheme ? 'bg-slate-100' : 'bg-slate-700'}`}>
                <AlertCircle className="w-6 h-6 text-blue-400" />
              </div>
-             <p className="text-slate-300 mt-1 whitespace-pre-wrap leading-relaxed">{infoMessage}</p>
+             <p className={`${isLightTheme ? 'text-slate-700' : 'text-slate-300'} mt-1 whitespace-pre-wrap leading-relaxed`}>{infoMessage}</p>
           </div>
         </Modal>
 
-        <div className="max-w-6xl w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-2xl overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500">
-          <div className="bg-slate-950/50 p-8 text-center border-b border-slate-800">
-             <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
-               <FileCheck className="w-12 h-12 text-blue-400" />
-             </div>
-             <h2 className="text-3xl font-bold text-white mb-2">{'\u8003\u8bd5\u6210\u7ee9\u5355'}</h2>
-             <p className="text-slate-400">{'\u8003\u8bd5\u4fe1\u606f\u4e0e\u6700\u7ec8\u5f97\u5206'}</p>
-             <div className="text-6xl font-bold text-blue-400 mt-2">{finalScore}</div>
+        <ImageModal
+          isOpen={!!previewImage}
+          src={getCacheBustedUrl(resolvedPreviewImage || previewImage || "")}
+          onClose={() => setPreviewImage(null)}
+        />
 
-             <div className="report-info-grid">
-                <div className="report-info-col">
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u8003\u8bd5\u540d\u79f0'}</span>
-                    <span className="report-info-value">{config.examTitle}</span>
+        <div className={shellClass}>
+          <div className="grid items-start gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
+            <div className={asideClass}>
+              <div className={asideCardClass}>
+                <div className="text-center">
+                  <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
+                    <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u8003\u751f\u59d3\u540d'}</span>
-                    <span className="report-info-value">{user.name}</span>
+                  <h2 className={`text-3xl font-bold mb-2 ${textPrimaryClass}`}>{'\u8003\u8bd5\u6210\u7ee9\u5355'}</h2>
+                  <p className={textMutedClass}>{'\u8003\u8bd5\u4fe1\u606f\u4e0e\u6700\u7ec8\u5f97\u5206'}</p>
+                  <div className="text-6xl font-bold text-blue-400 mt-2">{finalScore}</div>
+                </div>
+
+                <div className="report-info-grid">
+                  <div className="report-info-col">
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u8003\u8bd5\u540d\u79f0'}</span>
+                      <span className="report-info-value">{config.examTitle}</span>
+                    </div>
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u8003\u751f\u59d3\u540d'}</span>
+                      <span className="report-info-value">{user.name}</span>
+                    </div>
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u8003\u751f\u5b66\u53f7'}</span>
+                      <span className="report-info-value">{user.studentId}</span>
+                    </div>
                   </div>
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u8003\u751f\u5b66\u53f7'}</span>
-                    <span className="report-info-value">{user.studentId}</span>
+                  <div className="report-info-col">
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u5f00\u59cb\u8003\u8bd5\u65f6\u95f4'}</span>
+                      <span className="report-info-value">{new Date(user.joinedAt).toLocaleString()}</span>
+                    </div>
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u5b8c\u6210\u8003\u8bd5\u65f6\u95f4'}</span>
+                      <span className="report-info-value">{examFinishedAt ? new Date(examFinishedAt).toLocaleString() : new Date().toLocaleString()}</span>
+                    </div>
+                    <div className="report-info-row">
+                      <span className="report-info-label">{'\u6279\u6539\u6a21\u578b'}</span>
+                      <span className="report-info-value">{providerLabel(usedProvider)}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="report-info-col">
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u5f00\u59cb\u8003\u8bd5\u65f6\u95f4'}</span>
-                    <span className="report-info-value">{new Date(user.joinedAt).toLocaleString()}</span>
-                  </div>
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u5b8c\u6210\u8003\u8bd5\u65f6\u95f4'}</span>
-                    <span className="report-info-value">{examFinishedAt ? new Date(examFinishedAt).toLocaleString() : new Date().toLocaleString()}</span>
-                  </div>
-                  <div className="report-info-row">
-                    <span className="report-info-label">{'\u6279\u6539\u6a21\u578b'}</span>
-                    <span className="report-info-value">{providerLabel(usedProvider)}</span>
+
+                <div className="flex justify-center mt-6">
+                  <div className="flex flex-col items-center gap-3">
+                    {uploadStatus?.success ? (
+                      <div className={uploadPillClass}>
+                        <CloudUpload className="w-3 h-3"/> {'\u6210\u7ee9\u5df2\u4e0a\u4f20\u4e91\u7aef'}
+                      </div>
+                    ) : (
+                      <div className={uploadPillClass} title={uploadStatus?.error}>
+                        <AlertTriangle className="w-3 h-3"/> {'\u4e91\u7aef\u4e0a\u4f20\u5931\u8d25\uff08\u5df2\u5b58\u672c\u5730\uff09'}
+                      </div>
+                    )}
+
+                    {desktopExportStatus && (
+                      <div className={exportPillClass} title={desktopExportStatus.error || desktopExportStatus.path}>
+                        {desktopExportStatus.success ? <Download className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                        {desktopExportStatus.success
+                          ? (desktopExportStatus.auto ? '成绩单已自动导出到桌面' : '成绩单已导出到桌面')
+                          : '成绩单导出失败'}
+                      </div>
+                    )}
                   </div>
                 </div>
-             </div>
+              </div>
 
-             <div className="flex justify-center gap-4 mt-6">
-                {uploadStatus?.success ? (
-                  <div className="flex items-center gap-2 text-xs bg-blue-900/20 text-blue-400 px-3 py-1.5 rounded-full border border-blue-900/50">
-                     <CloudUpload className="w-3 h-3"/> {'\u6210\u7ee9\u5df2\u4e0a\u4f20\u4e91\u7aef'}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs bg-orange-900/20 text-orange-400 px-3 py-1.5 rounded-full border border-orange-900/50" title={uploadStatus?.error}>
-                     <AlertTriangle className="w-3 h-3"/> {'\u4e91\u7aef\u4e0a\u4f20\u5931\u8d25\uff08\u5df2\u5b58\u672c\u5730\uff09'}
+              <div className={`pt-6 mt-6 border-t space-y-3 ${asideDividerClass}`}>
+                <Button
+                  onClick={() => reportExportMeta && exportReportToDesktop(reportExportMeta.filename, reportExportMeta.content)}
+                  variant="secondary"
+                  isLoading={isExportingReport}
+                  disabled={!reportExportMeta}
+                  className={isLightTheme ? 'w-full bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white shadow-emerald-900/20' : 'w-full bg-emerald-600/90 hover:bg-emerald-500 border border-emerald-500/40 text-white shadow-emerald-900/20'}
+                >
+                  <Download className="w-4 h-4"/> 导出成绩单
+                </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800' : ''}>
+                    <LogOut className="w-4 h-4"/> 返回首页
+                  </Button>
+                  <Button onClick={handleSafeSystemExit} className="bg-red-600 hover:bg-red-500 shadow-red-900/20">
+                    <Power className="w-4 h-4"/> 退出系统
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className={rightCardClass}>
+              <div className={rightPaneClass}>
+                {reviewSummary && (
+                  <div className="space-y-4 mb-8">
+                    <div>
+                      <h3 className={`text-xl font-bold ${textPrimaryClass}`}>阅卷总结</h3>
+                      <p className={`text-sm mt-1 leading-relaxed ${textMutedClass}`}>{reviewSummary.overview}</p>
+                    </div>
+                    <div className="space-y-4 text-sm">
+                      <div className={`${getSummaryPanelTone('emerald', isLightTheme).panel} rounded-lg border p-4`}>
+                        <span className={`${getSummaryPanelTone('emerald', isLightTheme).title} font-bold block mb-2`}>做得好的地方</span>
+                        <ul className={`space-y-2 ${summaryListClass}`}>
+                          {reviewSummary.strengths.map((item, idx) => (
+                            <li key={`strength-${idx}`} className="leading-relaxed">• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className={`${getSummaryPanelTone('rose', isLightTheme).panel} rounded-lg border p-4`}>
+                        <span className={`${getSummaryPanelTone('rose', isLightTheme).title} font-bold block mb-2`}>主要失分点</span>
+                        <ul className={`space-y-2 ${summaryListClass}`}>
+                          {reviewSummary.weaknesses.map((item, idx) => (
+                            <li key={`weakness-${idx}`} className="leading-relaxed">• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className={`${getSummaryPanelTone('blue', isLightTheme).panel} rounded-lg border p-4`}>
+                        <span className={`${getSummaryPanelTone('blue', isLightTheme).title} font-bold block mb-2`}>下一步提高</span>
+                        <ul className={`space-y-2 ${summaryListClass}`}>
+                          {reviewSummary.nextSteps.map((item, idx) => (
+                            <li key={`next-step-${idx}`} className="leading-relaxed">• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 )}
-             </div>
-          </div>
-          
-<div className="p-6 space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar bg-slate-900/30">
-            {questions.map((q, idx) => {
-              const res = results[q.id];
-              const pts = Math.round((res.score / 100) * (q.points || 0));
-              return (
-                <div key={q.id} className="bg-slate-800/50 rounded-lg p-5 border border-slate-700 hover:border-slate-600 transition-colors">
-                   <div className="flex justify-between items-start mb-3">
-                     <div>
-                       <h3 className="font-bold text-white text-lg">{idx + 1}. {q.title}</h3>
-                       <div className="flex gap-2 mt-1">
-                          <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">{q.difficulty}</span>
-                          <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">满分: {q.points} 分</span>
-                       </div>
-                     </div>
-                     <div className="text-right">
-                       <div className={`text-xl font-bold ${res.passed ? 'text-green-400' : 'text-red-400'}`}>{pts} 分</div>
-                       <div className="text-xs text-slate-500">AI 评分: {res.score}%</div>
-                     </div>
-                   </div>
-                   <div className="grid md:grid-cols-2 gap-4 text-sm mt-4">
-                     <div className="bg-slate-900/80 p-3 rounded border border-slate-800/80">
-                        <span className="text-purple-400 font-bold block mb-1">逻辑反馈</span>
-                        <p className="text-slate-400">{res.logic_feedback}</p>
-                     </div>
-                     <div className="bg-slate-900/80 p-3 rounded border border-slate-800/80">
-                        <span className="text-yellow-400 font-bold block mb-1">改进建议</span>
-                        <p className="text-slate-400">{res.suggestion}</p>
-                     </div>
-                   </div>
-                </div>
-              );
-            })}
-          </div>
 
-          <div className="p-6 border-t border-slate-800 bg-slate-950/50 flex justify-center gap-4">
-            <Button onClick={onExit} variant="secondary"><LogOut className="w-4 h-4"/> 返回首页</Button>
-            <Button onClick={handleSafeSystemExit} className="bg-red-600 hover:bg-red-500 shadow-red-900/20"><Power className="w-4 h-4"/> 退出系统</Button>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className={`text-xl font-bold ${textPrimaryClass}`}>分题解析</h3>
+                    <p className={`text-sm ${textMutedClass}`}>展开后可查看题目内容、扣分依据、考生答案与 AI 参考答案。</p>
+                  </div>
+                  <div className={countPillClass}>
+                    共 {questions.length} 题
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                {questions.map((q, idx) => {
+                const res = results[q.id];
+                const pts = getQuestionAwardedPoints(res, q.points);
+                const isExpanded = expandedResultId === q.id;
+                const studentAnswer = answers[q.id] && answers[q.id] !== q.template ? answers[q.id] : '（未作答）';
+                const strengthTone = getSummaryPanelTone('emerald', isLightTheme);
+                const issueTone = getSummaryPanelTone('rose', isLightTheme);
+                const nextTone = getSummaryPanelTone('blue', isLightTheme);
+
+                  return (
+                    <div key={q.id} className={resultCardClass}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedResultId((prev) => prev === q.id ? null : q.id)}
+                      className={resultHeaderClass}
+                      aria-expanded={isExpanded}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={chevronWrapClass}>
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </span>
+                        <div className="min-w-0">
+                          <h3 className={`font-bold text-lg ${textPrimaryClass}`}>{idx + 1}. {q.title}</h3>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className={metaChipClass}>{q.difficulty}</span>
+                            <span className={metaChipClass}>满分: {q.points} 分</span>
+                            {res.pathHit && (
+                              <span className={pathHitChipClass}>关键路径命中</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="pl-10 lg:pl-4 text-right">
+                        <div className={`flex items-end justify-end gap-1 font-bold leading-none ${scoreClass(res.passed)}`}>
+                          <span className="text-[2rem]">{pts}</span>
+                          <span className="text-[1.35rem] leading-none translate-y-[-1px]">分</span>
+                        </div>
+                        <div className={`text-xs mt-2 ${textMutedClass}`}>标准评分: {res.score}%</div>
+                      </div>
+                    </button>
+
+                    <div className="px-5 pb-5">
+                      <div className="flex flex-wrap gap-2">
+                        {res.detectedTags.length > 0 ? (
+                          res.detectedTags.map((tag) => (
+                            <div
+                              key={`${q.id}-${tag.code}`}
+                              className={`text-xs px-2.5 py-1 rounded-full border ${getDeductionToneClass(tag.category, isLightTheme)}`}
+                              title={tag.evidence}
+                            >
+                              {tag.label} (-{tag.weight}%)
+                            </div>
+                          ))
+                        ) : (
+                          <div className={noDeductionChipClass}>
+                            未命中固定扣分标签
+                          </div>
+                        )}
+                        {res.scoreBreakdown.floorApplied && (
+                          <div className={floorChipClass}>
+                            已触发关键路径保底
+                          </div>
+                        )}
+                      </div>
+
+                      {isExpanded && (
+                        <div className={`mt-5 space-y-4 ${resultDividerClass}`}>
+                          <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
+                            <span className={`font-bold block mb-2 ${textPrimaryClass}`}>题目内容</span>
+                            <p className={`text-sm whitespace-pre-wrap leading-7 ${summaryListClass}`}>{q.description}</p>
+                            {q.imageUrl && !resultImageErrors[q.id] && (
+                              <div
+                                className="mt-4 relative group w-fit cursor-zoom-in"
+                                onClick={() => setPreviewImage(q.imageUrl!)}
+                              >
+                                <CachedImage
+                                  src={getCacheBustedUrl(q.imageUrl)}
+                                  alt={`${q.title} 配图`}
+                                  referrerPolicy="no-referrer"
+                                  className={`rounded-lg border ${isLightTheme ? 'border-slate-200 bg-white' : 'border-slate-700 bg-black/20'} w-auto h-auto max-w-full max-h-[360px] shadow-lg hover:opacity-90 transition-opacity min-h-[100px]`}
+                                  onError={(e) => {
+                                    const src = (e.currentTarget as HTMLImageElement).currentSrc || "";
+                                    if (src.startsWith('appimg://') || src.startsWith('blob:') || src.startsWith('data:')) {
+                                      setResultImageErrors((prev) => ({ ...prev, [q.id]: true }));
+                                    }
+                                  }}
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-lg">
+                                  <ZoomIn className="w-8 h-8 text-white drop-shadow-md" />
+                                </div>
+                              </div>
+                            )}
+                            {q.imageUrl && resultImageErrors[q.id] && (
+                              <div className={`mt-4 w-full p-4 border border-dashed rounded-lg text-xs flex flex-col items-center gap-2 ${isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-500' : 'border-slate-700 bg-slate-800/50 text-slate-500'}`}>
+                                <AlertTriangle className="w-6 h-6 text-orange-400" />
+                                <span>图片加载失败: 权限不足或路径错误</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {res.detectedTags.length > 0 && (
+                            <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
+                              <span className={`font-bold block mb-2 ${textPrimaryClass}`}>扣分证据</span>
+                              <ul className={`space-y-2 text-sm ${textMutedClass}`}>
+                                {res.detectedTags.map((tag) => (
+                                  <li key={`${q.id}-${tag.code}-evidence`} className="leading-relaxed">
+                                    <span className={textPrimaryClass}>{tag.label}：</span>{tag.evidence}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="grid xl:grid-cols-3 gap-4 text-sm">
+                            <div className={`${strengthTone.panel} p-4 rounded-xl border`}>
+                              <span className={`${strengthTone.title} font-bold block mb-2`}>做得好的地方</span>
+                              <p className={`${summaryListClass} leading-relaxed`}>{res.summary.highlights}</p>
+                            </div>
+                            <div className={`${issueTone.panel} p-4 rounded-xl border`}>
+                              <span className={`${issueTone.title} font-bold block mb-2`}>主要问题</span>
+                              <p className={`${summaryListClass} leading-relaxed`}>{res.summary.mainIssues}</p>
+                            </div>
+                            <div className={`${nextTone.panel} p-4 rounded-xl border`}>
+                              <span className={`${nextTone.title} font-bold block mb-2`}>下一步建议</span>
+                              <p className={`${summaryListClass} leading-relaxed`}>{res.summary.nextSteps}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
+                              <span className={`font-bold block ${textPrimaryClass}`}>考生作答</span>
+                              <pre className={codeBlockClass}>{studentAnswer}</pre>
+                            </div>
+                            <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
+                              <span className={`font-bold block ${textPrimaryClass}`}>AI 修正版参考答案</span>
+                              <pre className={codeBlockClass}>{res.correctedAnswer || '当前未生成 AI 修正版参考答案。'}</pre>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    </div>
+                  );
+                })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

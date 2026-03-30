@@ -649,23 +649,16 @@ body {
 
 .report-info-grid {
   margin: 24px auto 0;
-  max-width: 620px;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 36px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   text-align: left;
 }
-.report-info-col {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-
 .report-info-row {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
   justify-content: flex-start;
 }
 
@@ -674,12 +667,17 @@ body {
   font-size: 12px;
   letter-spacing: 0.04em;
   min-width: 96px;
+  padding-top: 2px;
 }
 
 .report-info-value {
   color: #e2e8f0;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.55;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 :root[data-theme="light"] .report-info-label {
@@ -688,6 +686,13 @@ body {
 
 :root[data-theme="light"] .report-info-value {
   color: #0f172a;
+}
+
+@media (max-width: 640px) {
+  .report-info-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
 }
 
 :root[data-theme="light"] .model-picker__meta-name {

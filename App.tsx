@@ -1,12 +1,12 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { Code, GraduationCap, Presentation, ChevronRight, ChevronLeft, Monitor, LogOut, Key, Power, AlertCircle, Loader2, Wifi, WifiOff, Sun, Moon, Settings2, Save, ExternalLink } from 'lucide-react';
+import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon, Settings2, Save, ExternalLink } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
 import { cloudService } from './services/cloudService';
 import { AiProvider, AiProviderSettings, getAiSettings, getAvailableProviders, saveAiSettings, testProviderConnection } from './services/aiService';
-import { ExamConfig, Question, UserProfile } from './types';
+import { ExamConfig, Question, RuleSettings, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen from './components/OpeningScreen';
@@ -21,7 +21,17 @@ const providerDocs: Record<AiProvider, string> = {
   gemini: 'https://aistudio.google.com/app/apikey'
 };
 
-const shuffleArray = (array: any[]) => {
+type TeacherLoginForm = HTMLFormElement & {
+  password: HTMLInputElement;
+};
+
+type StudentLoginForm = HTMLFormElement & {
+  name: HTMLInputElement;
+  sid: HTMLInputElement;
+  accessKey?: HTMLInputElement;
+};
+
+const shuffleArray = <T,>(array: T[]): T[] => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -30,13 +40,14 @@ const shuffleArray = (array: any[]) => {
   return arr;
 };
 
-const generateQuestions = (pool: Question[], rules: any): Question[] => {
+const generateQuestions = (pool: Question[], rules: RuleSettings): Question[] => {
   const simple = pool.filter(q => q.difficulty === '简单');
   const medium = pool.filter(q => q.difficulty === '中等');
   const hard = pool.filter(q => q.difficulty === '困难');
 
-  const select = (source: Question[], rule: any) => {
-    return shuffleArray(source).slice(0, rule.count || 0).map(q => ({...q, points: rule.points}));
+  const select = (source: Question[], rule?: RuleSettings[string]) => {
+    if (!rule) return [];
+    return shuffleArray(source).slice(0, rule.count || 0).map(q => ({ ...q, points: rule.points }));
   };
 
   return [
@@ -69,7 +80,7 @@ export default function App() {
     return stored && defaults.includes(stored) ? stored : 'deepseek';
   });
   const [providerStatus, setProviderStatus] = useState<Record<AiProvider, 'idle' | 'checking' | 'ok' | 'fail'>>({
-        deepseek: 'idle',
+    deepseek: 'idle',
     gemini: 'idle',
     openai: 'idle',
     qwen: 'idle',
@@ -77,7 +88,6 @@ export default function App() {
   });
   const [isCheckingProviders, setIsCheckingProviders] = useState(false);
   const modelWheelRef = useRef<HTMLDivElement | null>(null);
-  const modelScrollRaf = useRef<number | null>(null);
   const aiProviderRef = useRef<AiProvider>(aiProvider);
   const [aiGuardOpen, setAiGuardOpen] = useState(false);
   const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
@@ -144,11 +154,11 @@ export default function App() {
   }, []);
 
   const providerOptions: { id: AiProvider; label: string; desc: string }[] = [
-        { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
+    { id: 'deepseek', label: 'Deepseek', desc: 'deepseek-chat' },
     { id: 'openai', label: 'OpenAI', desc: 'gpt-4o-mini' },
     { id: 'qwen', label: '通义千问', desc: 'qwen-plus' },
     { id: 'moonshot', label: 'Moonshot', desc: 'moonshot-v1-8k' },
-    { id: 'gemini', label: 'Gemini', desc: 'gemini-3-pro-preview' }
+    { id: 'gemini', label: 'Gemini', desc: 'gemini-1.5-flash' }
   ];
 
   const modelSelectorCopy = {
@@ -370,19 +380,21 @@ const requestEnterMode = (nextMode: AppMode) => {
     ]);
   };
 
-  const handleTeacherLogin = (e: React.FormEvent) => {
+  const handleTeacherLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const pwd = (e.target as any).password.value;
+    const form = e.currentTarget as TeacherLoginForm;
+    const pwd = form.password.value;
     // Password is set here. Change 'admin' to your desired password.
     if (pwd === 'admin') setMode('teacher_dash');
     else showAppAlert('管理密码错误，请重试。');
   };
 
-  const handleStudentStart = async (e: React.FormEvent) => {
+  const handleStudentStart = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const name = (e.target as any).name.value;
-    const sid = (e.target as any).sid.value;
-    const accessKey = (e.target as any).accessKey?.value;
+    const form = e.currentTarget as StudentLoginForm;
+    const name = form.name.value.trim();
+    const sid = form.sid.value.trim();
+    const accessKey = form.accessKey?.value;
 
     // Validate Student ID (Must be 11 digits)
     if (!/^\d{11}$/.test(sid)) {
