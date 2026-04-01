@@ -650,16 +650,18 @@ body {
 .report-info-grid {
   margin: 24px auto 0;
   max-width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   text-align: left;
 }
+
 .report-info-row {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   justify-content: flex-start;
+  min-height: 32px;
 }
 
 .report-info-label {
@@ -690,8 +692,7 @@ body {
 
 @media (max-width: 640px) {
   .report-info-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 4px;
   }
 }
 

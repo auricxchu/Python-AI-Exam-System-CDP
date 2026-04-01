@@ -7,6 +7,10 @@
 - Add exam-level review summary generation, including a dedicated all-blank submission branch and AI reference answers for blank questions.
 - Improve report export flow: auto-export failed cloud uploads to the desktop in Electron and add a manual "导出成绩单" action on the results page.
 - Refine results-page spacing, contrast, score typography, hover states, and action button layout across dark/light themes.
+- Extend the local run timeout to 60 seconds to better support multi-step input and slower executions.
+- Show total score and per-question awarded points with one decimal place, and animate the final score from 0.0 on the results page.
+- Simplify the exam info section into a single-column layout with tighter, more consistent spacing.
+- Restore readable Chinese copy in the student report page by removing Unicode escapes and cleaning display text.
 - Tighten Tailwind content scanning and clean up App/type definitions to reduce dead code and unsafe typing.
 
 - Refine the API settings modal into a simpler desktop-style layout with unified scrollbar styling.
@@ -16,7 +20,7 @@
 - Clean up multiple UTF-8/garbled UI strings in `App.tsx`.
 - Improve IME status handling with TSF probing, shift-tap state, and bottom-right status bar (now includes CAPS).
 - Remove duplicate IME status bar from the top header.
-- Restore StudentExam.tsx to valid UTF-8 after encoding corruption.
+- Restore `StudentExam.tsx` to valid UTF-8 after encoding corruption.
 - Stabilize IME CN/EN toggle behavior when switching between ENG and Chinese layouts.
 - Load Monaco editor assets locally for offline use and prevent IDE from hanging without VPN.
 - Prevent opening-screen code animation from restarting during init checks.

@@ -44,6 +44,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [examFinished, setExamFinished] = useState(false);
   const [results, setResults] = useState<Record<string, GradingResult>>({});
   const [finalScore, setFinalScore] = useState(0);
+  const [animatedFinalScore, setAnimatedFinalScore] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string} | null>(null);
   const [examFinishedAt, setExamFinishedAt] = useState<string | null>(null);
   const [reviewSummary, setReviewSummary] = useState<ExamReviewSummary | null>(null);
@@ -59,13 +60,13 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       case 'openai':
         return 'OpenAI';
       case 'qwen':
-        return '\u901a\u4e49\u5343\u95ee';
+        return '通义千问';
       case 'moonshot':
         return 'Moonshot';
       case 'gemini':
         return 'Gemini';
       default:
-        return '\u9ed8\u8ba4';
+        return '默认';
     }
   };
   
@@ -85,6 +86,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const stdoutShadowRef = useRef<Record<string, string>>({});
   const mainSplitRef = useRef<HTMLDivElement | null>(null);
   const editorSplitRef = useRef<HTMLDivElement | null>(null);
+  const scoreAnimationFrameRef = useRef<number | null>(null);
   const defaultDescWidth = 420;
   const defaultTerminalHeight = 260;
   const [descWidth, setDescWidth] = useState(defaultDescWidth);
@@ -293,7 +295,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             [runKey]: (prev[runKey] || "") + "\n运行超时，已重置运行环境，请重试。\n"
         }));
         setIsRunning(false);
-    }, 15000);
+    }, 60000);
 
     try {
         await runPythonCodeLocal(
@@ -552,8 +554,49 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
   };
 
+  const formatScoreDisplay = (value: number) => value.toFixed(1);
+
+  useEffect(() => {
+    if (scoreAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(scoreAnimationFrameRef.current);
+      scoreAnimationFrameRef.current = null;
+    }
+
+    if (!examFinished) {
+      setAnimatedFinalScore(0);
+      return;
+    }
+
+    const duration = 900;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const nextValue = Number((finalScore * eased).toFixed(1));
+      setAnimatedFinalScore(nextValue);
+
+      if (progress < 1) {
+        scoreAnimationFrameRef.current = window.requestAnimationFrame(tick);
+      } else {
+        setAnimatedFinalScore(finalScore);
+        scoreAnimationFrameRef.current = null;
+      }
+    };
+
+    setAnimatedFinalScore(0);
+    scoreAnimationFrameRef.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      if (scoreAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(scoreAnimationFrameRef.current);
+        scoreAnimationFrameRef.current = null;
+      }
+    };
+  }, [examFinished, finalScore]);
+
   const getQuestionAwardedPoints = (result: GradingResult, questionPoints?: number) => {
-    return Math.round((result.score / 100) * (questionPoints || 0));
+    return Number(((result.score / 100) * (questionPoints || 0)).toFixed(1));
   };
 
   const getDeductionToneClass = (category: string, isLightTheme = false) => {
@@ -638,14 +681,14 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   ) => {
     const lines = [];
     lines.push("================================================================");
-    lines.push(`               PYTHON \u667a\u80fd\u8003\u8bd5\u7cfb\u7edf - \u8003\u8bd5\u62a5\u544a`);
+    lines.push(`               PYTHON 智能考试系统 - 考试报告`);
     lines.push("================================================================");
-    lines.push(`\u8003\u751f\u59d3\u540d: ${user.name}`);
-    lines.push(`\u8003\u751f\u5b66\u53f7: ${user.studentId}`);
-    lines.push(`\u8003\u8bd5\u79d1\u76ee: ${config.examTitle}`);
-    lines.push(`\u5f00\u59cb\u65f6\u95f4: ${new Date(startTime).toLocaleString()}`);
-    lines.push(`\u5b8c\u6210\u65f6\u95f4: ${new Date(endTime).toLocaleString()}`);
-    lines.push(`\u6700\u7ec8\u5f97\u5206: ${score} \u5206`);
+    lines.push(`考生姓名: ${user.name}`);
+    lines.push(`考生学号: ${user.studentId}`);
+    lines.push(`考试科目: ${config.examTitle}`);
+    lines.push(`开始时间: ${new Date(startTime).toLocaleString()}`);
+    lines.push(`完成时间: ${new Date(endTime).toLocaleString()}`);
+    lines.push(`最终得分: ${formatScoreDisplay(score)} 分`);
     lines.push("================================================================");
     if (examSummary) {
       lines.push("[阅卷总结]");
@@ -744,7 +787,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       });
     }
 
-    const finalCalculatedScore = Math.round(score);
+    const finalCalculatedScore = Number(score.toFixed(1));
     const computedReviewSummary = buildExamReviewSummary(newResults, questions);
     setResults(newResults);
     setFinalScore(finalCalculatedScore);
@@ -951,8 +994,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         <Modal 
           isOpen={infoModalOpen} 
           onClose={() => setInfoModalOpen(false)} 
-          title={'\u7cfb\u7edf\u63d0\u793a'}
-          footer={<Button onClick={() => setInfoModalOpen(false)}>{'\u77e5\u9053\u4e86'}</Button>}
+          title="系统提示"
+          footer={<Button onClick={() => setInfoModalOpen(false)}>知道了</Button>}
         >
           <div className="flex items-start gap-4">
              <div className={`p-2 rounded-full shrink-0 ${isLightTheme ? 'bg-slate-100' : 'bg-slate-700'}`}>
@@ -976,39 +1019,35 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
-                  <h2 className={`text-3xl font-bold mb-2 ${textPrimaryClass}`}>{'\u8003\u8bd5\u6210\u7ee9\u5355'}</h2>
-                  <p className={textMutedClass}>{'\u8003\u8bd5\u4fe1\u606f\u4e0e\u6700\u7ec8\u5f97\u5206'}</p>
-                  <div className="text-6xl font-bold text-blue-400 mt-2">{finalScore}</div>
+                  <h2 className={`text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
+                  <p className={textMutedClass}>考试信息与最终得分</p>
+                  <div className="text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
                 </div>
 
                 <div className="report-info-grid">
-                  <div className="report-info-col">
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u8003\u8bd5\u540d\u79f0'}</span>
-                      <span className="report-info-value">{config.examTitle}</span>
-                    </div>
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u8003\u751f\u59d3\u540d'}</span>
-                      <span className="report-info-value">{user.name}</span>
-                    </div>
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u8003\u751f\u5b66\u53f7'}</span>
-                      <span className="report-info-value">{user.studentId}</span>
-                    </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">考试名称</span>
+                    <span className="report-info-value">{config.examTitle}</span>
                   </div>
-                  <div className="report-info-col">
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u5f00\u59cb\u8003\u8bd5\u65f6\u95f4'}</span>
-                      <span className="report-info-value">{new Date(user.joinedAt).toLocaleString()}</span>
-                    </div>
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u5b8c\u6210\u8003\u8bd5\u65f6\u95f4'}</span>
-                      <span className="report-info-value">{examFinishedAt ? new Date(examFinishedAt).toLocaleString() : new Date().toLocaleString()}</span>
-                    </div>
-                    <div className="report-info-row">
-                      <span className="report-info-label">{'\u6279\u6539\u6a21\u578b'}</span>
-                      <span className="report-info-value">{providerLabel(usedProvider)}</span>
-                    </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">考生姓名</span>
+                    <span className="report-info-value">{user.name}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">考生学号</span>
+                    <span className="report-info-value">{user.studentId}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">开始考试时间</span>
+                    <span className="report-info-value">{new Date(user.joinedAt).toLocaleString()}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">完成考试时间</span>
+                    <span className="report-info-value">{examFinishedAt ? new Date(examFinishedAt).toLocaleString() : new Date().toLocaleString()}</span>
+                  </div>
+                  <div className="report-info-row">
+                    <span className="report-info-label">批改模型</span>
+                    <span className="report-info-value">{providerLabel(usedProvider)}</span>
                   </div>
                 </div>
 
@@ -1016,11 +1055,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                   <div className="flex flex-col items-center gap-3">
                     {uploadStatus?.success ? (
                       <div className={uploadPillClass}>
-                        <CloudUpload className="w-3 h-3"/> {'\u6210\u7ee9\u5df2\u4e0a\u4f20\u4e91\u7aef'}
+                        <CloudUpload className="w-3 h-3"/> 成绩已上传云端
                       </div>
                     ) : (
                       <div className={uploadPillClass} title={uploadStatus?.error}>
-                        <AlertTriangle className="w-3 h-3"/> {'\u4e91\u7aef\u4e0a\u4f20\u5931\u8d25\uff08\u5df2\u5b58\u672c\u5730\uff09'}
+                        <AlertTriangle className="w-3 h-3"/> 云端上传失败（已存本地）
                       </div>
                     )}
 
@@ -1042,15 +1081,15 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                   variant="secondary"
                   isLoading={isExportingReport}
                   disabled={!reportExportMeta}
-                  className={isLightTheme ? 'w-full bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white shadow-emerald-900/20' : 'w-full bg-emerald-600/90 hover:bg-emerald-500 border border-emerald-500/40 text-white shadow-emerald-900/20'}
+                  className={isLightTheme ? 'w-full h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'w-full h-11 rounded-xl bg-slate-700 hover:bg-slate-600 border-slate-600 text-white shadow-none'}
                 >
                   <Download className="w-4 h-4"/> 导出成绩单
                 </Button>
                 <div className="grid grid-cols-2 gap-3">
-                  <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800' : ''}>
+                  <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl shadow-none'}>
                     <LogOut className="w-4 h-4"/> 返回首页
                   </Button>
-                  <Button onClick={handleSafeSystemExit} className="bg-red-600 hover:bg-red-500 shadow-red-900/20">
+                  <Button onClick={handleSafeSystemExit} className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-none">
                     <Power className="w-4 h-4"/> 退出系统
                   </Button>
                 </div>
@@ -1139,7 +1178,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                       </div>
                       <div className="pl-10 lg:pl-4 text-right">
                         <div className={`flex items-end justify-end gap-1 font-bold leading-none ${scoreClass(res.passed)}`}>
-                          <span className="text-[2rem]">{pts}</span>
+                          <span className="text-[2rem]">{formatScoreDisplay(pts)}</span>
                           <span className="text-[1.35rem] leading-none translate-y-[-1px]">分</span>
                         </div>
                         <div className={`text-xs mt-2 ${textMutedClass}`}>标准评分: {res.score}%</div>
