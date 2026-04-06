@@ -17,6 +17,7 @@ public/monaco/
 electron/ime-helper/bin/
 electron/ime-helper/obj/
 electron/ime-helper/ime-helper.exe
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*
