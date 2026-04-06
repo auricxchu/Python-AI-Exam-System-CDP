@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Move AI provider configuration into the teacher dashboard and add a Supabase-backed cloud proxy flow for provider settings and review requests.
+- Add teacher-admin onboarding: force a password change after default-password login, guide the teacher through AI key setup, and show a short usage guide.
+- Improve teacher-side UX with draft-based AI connectivity checks, light-theme warning contrast fixes, and smoother direct-click model-wheel animation.
+- Remove client-side AI key injection from Vite builds and stop persisting the teacher password in session storage, reducing accidental secret exposure.
 - Rework the student results page into separate left/right cards with improved visual hierarchy and teacher-dashboard-aligned question panels.
 - Add per-question review expansion with question content, embedded images, AI summary blocks, stacked student/reference answers, and fixed image zoom preview.
 - Add exam-level review summary generation, including a dedicated all-blank submission branch and AI reference answers for blank questions.

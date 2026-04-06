@@ -9,14 +9,14 @@ A desktop-first exam system built with Electron + Vite + React. Teachers manage 
 - Teacher dashboard: question bank, rules, image upload, AI question drafting
 - Student exam: timer, navigation, code editor, local Python runner, AI grading
 - Model selector with availability checks for configured AI providers
-- Built-in API settings modal for AI provider keys
+- Teacher-side AI API settings synced through Supabase proxy
 - Exam report upload + local report generation
 - Light/Dark theme toggle (default light)
 
 - 教师端：题库、规则、图片上传、AI 出题草稿
 - 学生端：计时、题目导航、代码编辑器、本地 Python 运行、AI 评分
 - 已配置 AI 模型的选择与可用性检测
-- 内置 AI 平台 API 设置弹窗
+- 教师端 AI API 设置通过 Supabase 云代理同步
 - 成绩报告上传与本地报告生成
 - 黑白主题切换（默认浅色）
 
@@ -50,16 +50,10 @@ A desktop-first exam system built with Electron + Vite + React. Teachers manage 
 
 Create or edit `.env`:
 
-- `DEEPSEEK_API_KEY`
-- `API_KEY` (Gemini)
-- `OPENAI_API_KEY`
-- `QWEN_API_KEY`
-- `MOONSHOT_API_KEY`
-- Optional model overrides: `OPENAI_MODEL`, `QWEN_MODEL`, `MOONSHOT_MODEL`, `GEMINI_MODEL`
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 
-如未配置 AI Key，评分、AI 出题与连通性检测会受到影响。
+第三方 AI Key 不再写入前端 `.env`，请在教师端登录后通过 `AI API 设置` 保存到 Supabase 云端。
 
 ## Build & Package / 打包
 

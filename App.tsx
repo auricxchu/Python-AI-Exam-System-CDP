@@ -1,26 +1,21 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon, Settings2, Save, ExternalLink } from 'lucide-react';
+import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
 import { cloudService } from './services/cloudService';
-import { AiProvider, AiProviderSettings, getAiSettings, getAvailableProviders, saveAiSettings, testProviderConnection } from './services/aiService';
+import { AiProvider, AiProviderSettings, clearRuntimeAiSettings, clearStoredAiSettings, getAiSettings, getAvailableProviders, setRuntimeAiSettings, testProviderConnection } from './services/aiService';
+import { fetchCloudAiSettings, saveCloudAiSettings } from './services/aiCloudService';
+import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, verifyAdminPassword } from './services/adminAuthService';
 import { ExamConfig, Question, RuleSettings, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen from './components/OpeningScreen';
+import { teacherSessionService } from './services/teacherSessionService';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
-const providerDocs: Record<AiProvider, string> = {
-  deepseek: 'https://platform.deepseek.com/',
-  openai: 'https://platform.openai.com/api-keys',
-  qwen: 'https://help.aliyun.com/zh/model-studio/get-api-key',
-  moonshot: 'https://platform.moonshot.cn/console/api-keys',
-  gemini: 'https://aistudio.google.com/app/apikey'
-};
-
 type TeacherLoginForm = HTMLFormElement & {
   password: HTMLInputElement;
 };
@@ -92,8 +87,8 @@ export default function App() {
   const [aiGuardOpen, setAiGuardOpen] = useState(false);
   const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
   const [aiGuardMessage, setAiGuardMessage] = useState("");
-  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState<AiProviderSettings>(() => getAiSettings());
+  const [isCheckingTeacherLogin, setIsCheckingTeacherLogin] = useState(false);
 
 
   // Student State
@@ -197,11 +192,16 @@ export default function App() {
     setIsCheckingProviders(false);
   };
 
-  const handleSaveApiSettings = () => {
-    const next = saveAiSettings(apiSettings);
+  const handleSaveApiSettings = async (draftSettings: AiProviderSettings = apiSettings) => {
+    const next = setRuntimeAiSettings(draftSettings);
     setApiSettings(next);
-    setApiSettingsOpen(false);
+    const cloudResult = await saveCloudAiSettings(next);
+    if (!cloudResult.success) {
+      return cloudResult;
+    }
+    clearStoredAiSettings();
     checkProviders();
+    return cloudResult;
   };
 
   const handleOpeningComplete = () => {
@@ -243,6 +243,17 @@ export default function App() {
     window.setTimeout(() => {
       updateCenterSelection();
     }, 350);
+  };
+
+  const scrollModelWheelToProvider = (provider: AiProvider, behavior: ScrollBehavior = 'smooth') => {
+    const el = modelWheelRef.current;
+    if (!el) return;
+    const item = el.querySelector<HTMLButtonElement>(`[data-provider="${provider}"]`);
+    if (!item) return;
+    item.scrollIntoView({ behavior, inline: 'center', block: 'nearest' });
+    window.setTimeout(() => {
+      updateCenterSelection();
+    }, behavior === 'smooth' ? 350 : 0);
   };
 
   const updateCenterSelection = () => {
@@ -291,12 +302,7 @@ export default function App() {
 
   useEffect(() => {
     if (mode !== 'landing') return;
-    const el = modelWheelRef.current;
-    if (!el) return;
-    const item = el.querySelector<HTMLButtonElement>(`[data-provider="${aiProviderRef.current}"]`);
-    if (item) {
-      item.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
-    }
+    scrollModelWheelToProvider(aiProviderRef.current, 'auto');
   }, [mode]);
 
   const getAiAvailability = () => {
@@ -380,13 +386,45 @@ const requestEnterMode = (nextMode: AppMode) => {
     ]);
   };
 
-  const handleTeacherLogin = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleTeacherLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget as TeacherLoginForm;
-    const pwd = form.password.value;
-    // Password is set here. Change 'admin' to your desired password.
-    if (pwd === 'admin') setMode('teacher_dash');
-    else showAppAlert('管理密码错误，请重试。');
+    const pwd = form.password.value.trim();
+    if (!pwd) {
+      showAppAlert('请输入管理密码。');
+      return;
+    }
+
+    setIsCheckingTeacherLogin(true);
+    try {
+      const cloudConfig = await cloudService.fetchExamConfig();
+      const activeConfig = cloudConfig || config;
+      const requiresCloudValidation = hasCustomAdminPassword(activeConfig);
+
+      if (requiresCloudValidation && !cloudConfig) {
+        showAppAlert('当前教师端密码已切换为云端验证，但系统暂时无法拉取云端配置。\n请检查网络或稍后重试。');
+        return;
+      }
+
+      const verified = await verifyAdminPassword(pwd, activeConfig);
+      if (!verified) {
+        showAppAlert(`管理密码错误，请重试。${!requiresCloudValidation ? `\n当前仍在使用初始本地密码：${DEFAULT_TEACHER_PASSWORD}` : ''}`);
+        return;
+      }
+
+      teacherSessionService.remember(pwd);
+      if (cloudConfig) {
+        setConfig(cloudConfig);
+      }
+      const cloudAiSettings = await fetchCloudAiSettings();
+      if (cloudAiSettings) {
+        setApiSettings(setRuntimeAiSettings(cloudAiSettings));
+        clearStoredAiSettings();
+      }
+      setMode('teacher_dash');
+    } finally {
+      setIsCheckingTeacherLogin(false);
+    }
   };
 
   const handleStudentStart = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -458,10 +496,19 @@ const requestEnterMode = (nextMode: AppMode) => {
       <TeacherDashboard
         config={config}
         onUpdateConfig={setConfig}
-        onExit={() => setMode('landing')}
+        onExit={() => {
+          teacherSessionService.clear();
+          clearRuntimeAiSettings();
+          setMode('landing');
+        }}
         theme={theme}
         onToggleTheme={toggleTheme}
         aiProvider={aiProvider}
+        apiSettings={apiSettings}
+        providerStatus={providerStatus}
+        isCheckingProviders={isCheckingProviders}
+        onSaveApiSettings={handleSaveApiSettings}
+        onCheckProviders={checkProviders}
       />
     );
   }
@@ -541,76 +588,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
-      <Modal
-        isOpen={apiSettingsOpen}
-        onClose={() => setApiSettingsOpen(false)}
-        title="API 设置"
-        panelClassName="w-[92vw] max-w-[600px]"
-        bodyClassName="h-[46vh] overflow-y-auto custom-scrollbar"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setApiSettingsOpen(false)}>取消</Button>
-            <Button onClick={handleSaveApiSettings}>
-              <Save className="w-4 h-4" />
-              保存
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 pr-2">
-          {providerOptions.map((option) => {
-            const status = providerStatus[option.id];
-            const statusLabel = status === 'ok'
-              ? '可用'
-              : status === 'fail'
-                ? '不可用'
-                : status === 'checking'
-                  ? '检测中...'
-                  : '未检测';
-
-            return (
-              <div key={`api-simple-${option.id}`} className="rounded-xl border border-slate-700/70 bg-slate-900/40 p-4">
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                        <span>{option.label}</span>
-                        <a
-                          href={providerDocs[option.id]}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center text-slate-400 hover:text-slate-200 transition-colors"
-                          title={`${option.label} API 文档`}
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
-                      <div className="text-xs text-slate-400 mt-1">{statusLabel}</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-400">API Key</label>
-                    <Input
-                      type="password"
-                      value={apiSettings[option.id].apiKey}
-                      onChange={(e) => setApiSettings((prev) => ({
-                        ...prev,
-                        [option.id]: {
-                          ...prev[option.id],
-                          apiKey: e.target.value
-                        }
-                      }))}
-                      placeholder={`输入 ${option.label} API Key`}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Modal>
-            <div key={`landing-${landingAnimKey}`} className={`landing-content pt-24 pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
+      <div key={`landing-${landingAnimKey}`} className={`landing-content pt-24 pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           {mode === 'landing' && (
             <>
@@ -628,14 +606,6 @@ const requestEnterMode = (nextMode: AppMode) => {
                   <div className="model-picker__header">
                     <div className="model-picker__title">{modelSelectorCopy.title}</div>
                     <div className="model-picker__actions">
-                      <button
-                        type="button"
-                        onClick={() => setApiSettingsOpen(true)}
-                        className="model-picker__check"
-                      >
-                        <Settings2 className="w-3.5 h-3.5" />
-                        API 设置
-                      </button>
                       <button
                         type="button"
                         onClick={checkProviders}
@@ -673,13 +643,9 @@ const requestEnterMode = (nextMode: AppMode) => {
                             role="option"
                             aria-selected={aiProvider === option.id}
                             data-provider={option.id}
-                            onClick={(event) => {
-                              const target = event.currentTarget;
-                              setAiProvider(option.id);
-                              target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                              window.setTimeout(() => {
-                                updateCenterSelection();
-                              }, 350);
+                            onClick={() => {
+                              if (option.id === aiProviderRef.current) return;
+                              scrollModelWheelToProvider(option.id, 'smooth');
                             }}
                             className={`model-wheel__item ${aiProvider === option.id ? 'is-active' : ''}`}
                           >
@@ -812,7 +778,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                   <div className="flex gap-3 pt-2">
                     <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
-                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/30">进入后台</Button>
+                    <Button type="submit" isLoading={isCheckingTeacherLogin} disabled={isCheckingTeacherLogin} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/30">进入后台</Button>
                   </div>
                 </form>
                 <div className="mt-6 text-xs text-slate-500">忘记密码请联系系统管理员。</div>

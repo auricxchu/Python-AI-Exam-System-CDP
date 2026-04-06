@@ -1,16 +1,7 @@
 
 import { Question, ExamReport, ExamConfig } from "../types";
 import { DEFAULT_CONFIG, DEFAULT_QUESTIONS } from "../constants";
-import { createClient } from '@supabase/supabase-js';
-
-// TODO: Replace these with your actual Supabase Project URL and Anon Key
-// You can get these from your Supabase Dashboard -> Settings -> API
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://yzuhyzdjhffimgufddsr.supabase.co";
-const SUPABASE_KEY = process.env.SUPABASE_KEY || "sb_publishable_oadXrPeC0YFrWlFcklnhFg_g0CFkR0X";
-
-// Initialize Supabase client
-const isConfigured = SUPABASE_URL !== "https://your-project.supabase.co";
-const supabase = isConfigured ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+import { supabase } from "./supabaseClient";
 
 export interface CloudResult {
   success: boolean;

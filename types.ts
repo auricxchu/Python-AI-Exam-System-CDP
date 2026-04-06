@@ -20,6 +20,8 @@ export interface RuleSettings {
 export interface ExamConfig {
   examTitle: string;
   accessKey?: string;
+  adminPasswordHash?: string;
+  adminPasswordUpdatedAt?: string;
   duration: number;
   questionBank: Question[];
   ruleSettings: RuleSettings;

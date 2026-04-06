@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, Plus, Trash2, Pencil, LogOut, Check, AlertTriangle, 
@@ -6,7 +6,8 @@ import {
   FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon, Wand2
 } from 'lucide-react';
 import { ExamConfig, Question, Difficulty } from '../types';
-import { AiProvider, generateQuestion } from '../services/aiService';
+import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings } from '../services/aiService';
+import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, hashAdminPassword, verifyAdminPassword } from '../services/adminAuthService';
 import { Button, Input, Badge } from './ui';
 import Modal from './Modal';
 import ImageModal from './ImageModal';
@@ -14,6 +15,7 @@ import CachedImage from './CachedImage';
 import { storageService } from '../services/storageService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
+import { teacherSessionService } from '../services/teacherSessionService';
 
 interface TeacherDashboardProps {
   config: ExamConfig;
@@ -22,9 +24,34 @@ interface TeacherDashboardProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   aiProvider: AiProvider;
+  apiSettings: AiProviderSettings;
+  providerStatus: Record<AiProvider, 'idle' | 'checking' | 'ok' | 'fail'>;
+  isCheckingProviders: boolean;
+  onSaveApiSettings: (settings: AiProviderSettings) => Promise<{ success: boolean; error?: string }>;
+  onCheckProviders: () => void;
 }
 
-const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateConfig, onExit, theme, onToggleTheme, aiProvider }) => {
+const providerDocs: Record<AiProvider, string> = {
+  deepseek: 'https://platform.deepseek.com/',
+  openai: 'https://platform.openai.com/api-keys',
+  qwen: 'https://help.aliyun.com/zh/model-studio/get-api-key',
+  moonshot: 'https://platform.moonshot.cn/console/api-keys',
+  gemini: 'https://aistudio.google.com/app/apikey'
+};
+
+const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
+  config,
+  onUpdateConfig,
+  onExit,
+  theme,
+  onToggleTheme,
+  aiProvider,
+  apiSettings,
+  providerStatus,
+  isCheckingProviders,
+  onSaveApiSettings,
+  onCheckProviders
+}) => {
   // State
   const [localConfig, setLocalConfig] = useState<ExamConfig>(config);
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
@@ -35,6 +62,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
   const [syncStatusText, setSyncStatusText] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [apiSettingsDraft, setApiSettingsDraft] = useState<AiProviderSettings>(apiSettings);
+  const [draftProviderStatus, setDraftProviderStatus] = useState<Record<AiProvider, 'idle' | 'checking' | 'ok' | 'fail'>>(providerStatus);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", nextPassword: "", confirmPassword: "" });
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isSavingApiSettings, setIsSavingApiSettings] = useState(false);
+  const [isCheckingDraftProviders, setIsCheckingDraftProviders] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [pendingGuideAfterApiSetup, setPendingGuideAfterApiSetup] = useState(false);
+  const [usageGuideOpen, setUsageGuideOpen] = useState(false);
     
   // Edit/Add Question State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -93,6 +131,21 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
     }
   }, [notif]);
 
+  useEffect(() => {
+    setApiSettingsDraft(apiSettings);
+  }, [apiSettings]);
+
+  useEffect(() => {
+    setDraftProviderStatus(providerStatus);
+  }, [providerStatus]);
+
+  useEffect(() => {
+    if (!hasCustomAdminPassword(localConfig)) {
+      setMustChangePassword(true);
+      setPasswordModalOpen(true);
+    }
+  }, [localConfig]);
+
   // Handlers
   const handleSaveConfig = async () => {
     // Validate Access Key
@@ -116,6 +169,107 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
         setNotif({ msg: "考试规则已保存并同步至云端", type: "success" });
     } else {
         setNotif({ msg: `保存本地成功，但云端同步失败: ${result.error}`, type: "warning" });
+    }
+  };
+
+  const handleSaveApiSettingsInTeacher = async () => {
+    setIsSavingApiSettings(true);
+    try {
+      const result = await onSaveApiSettings(apiSettingsDraft);
+      if (!result.success) {
+        setNotif({ msg: `API 设置同步失败: ${result.error || '未知错误'}`, type: "warning" });
+        return;
+      }
+      setNotif({ msg: "API 设置已保存并同步到云端", type: "success" });
+      setApiSettingsOpen(false);
+      if (pendingGuideAfterApiSetup) {
+        setPendingGuideAfterApiSetup(false);
+        setUsageGuideOpen(true);
+      }
+    } finally {
+      setIsSavingApiSettings(false);
+    }
+  };
+
+  const handleCheckDraftApiSettings = async () => {
+    if (isCheckingDraftProviders) return;
+    setIsCheckingDraftProviders(true);
+    const targets: AiProvider[] = ['deepseek', 'openai', 'qwen', 'moonshot', 'gemini'];
+    setDraftProviderStatus((prev) => {
+      const next = { ...prev };
+      targets.forEach((key) => {
+        next[key] = 'checking';
+      });
+      return next;
+    });
+
+    await Promise.allSettled(
+      targets.map(async (key) => {
+        const ok = await testProviderConnectionWithSettings(key, apiSettingsDraft, true);
+        setDraftProviderStatus((prev) => ({
+          ...prev,
+          [key]: ok ? 'ok' : 'fail'
+        }));
+      })
+    );
+
+    setIsCheckingDraftProviders(false);
+  };
+
+  const handleChangePassword = async () => {
+    const currentPassword = passwordForm.currentPassword.trim();
+    const nextPassword = passwordForm.nextPassword.trim();
+    const confirmPassword = passwordForm.confirmPassword.trim();
+
+    if (!currentPassword || !nextPassword || !confirmPassword) {
+      setNotif({ msg: "请完整填写密码信息", type: "warning" });
+      return;
+    }
+    if (!(await verifyAdminPassword(currentPassword, localConfig))) {
+      setNotif({ msg: "当前管理密码错误", type: "warning" });
+      return;
+    }
+    if (nextPassword.length < 4) {
+      setNotif({ msg: "新密码至少需要 4 位", type: "warning" });
+      return;
+    }
+    if (nextPassword !== confirmPassword) {
+      setNotif({ msg: "两次输入的新密码不一致", type: "warning" });
+      return;
+    }
+
+    setIsSavingPassword(true);
+    setIsSyncing(true);
+    setSyncStatusText("正在同步管理密码...");
+    try {
+      const newConfig: ExamConfig = {
+        ...localConfig,
+        adminPasswordHash: await hashAdminPassword(nextPassword),
+        adminPasswordUpdatedAt: new Date().toISOString()
+      };
+
+      const result = await cloudService.saveExamConfig(newConfig);
+      if (!result.success) {
+        setNotif({ msg: `密码同步失败: ${result.error}`, type: "warning" });
+        return;
+      }
+
+      setLocalConfig(newConfig);
+      onUpdateConfig(newConfig);
+      storageService.saveConfig(newConfig);
+      teacherSessionService.remember(nextPassword);
+      setPasswordForm({ currentPassword: "", nextPassword: "", confirmPassword: "" });
+      setPasswordModalOpen(false);
+      if (mustChangePassword) {
+        setMustChangePassword(false);
+        setPendingGuideAfterApiSetup(true);
+        setApiSettingsOpen(true);
+      }
+      setNotif({ msg: "管理密码已更新，后续将优先使用云端验证", type: "success" });
+    } finally {
+      setIsSavingPassword(false);
+      setIsSyncing(false);
+      setSyncStatusText("");
     }
   };
 
@@ -327,6 +481,162 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
         <p>确定要从云端题库中永久删除这道题目吗？</p>
       </Modal>
 
+      <Modal
+        isOpen={apiSettingsOpen}
+        onClose={() => setApiSettingsOpen(false)}
+        title="AI API 设置"
+        panelClassName="w-[92vw] max-w-[600px]"
+        bodyClassName="h-[46vh] overflow-y-auto custom-scrollbar"
+        footer={
+          <>
+            <Button variant="secondary" onClick={handleCheckDraftApiSettings} isLoading={isCheckingDraftProviders} disabled={isCheckingDraftProviders}>
+              <RefreshCw className="w-4 h-4" />
+              {isCheckingDraftProviders ? '检测中...' : '检测连通性'}
+            </Button>
+            <Button variant="secondary" onClick={() => setApiSettingsOpen(false)}>取消</Button>
+            <Button onClick={handleSaveApiSettingsInTeacher} isLoading={isSavingApiSettings} disabled={isSavingApiSettings}>
+              <Save className="w-4 h-4" />
+              保存
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 pr-2">
+          {(['deepseek', 'openai', 'qwen', 'moonshot', 'gemini'] as AiProvider[]).map((provider) => {
+            const status = draftProviderStatus[provider];
+            const statusLabel = status === 'ok'
+              ? '可用'
+              : status === 'fail'
+                ? '不可用'
+                : status === 'checking'
+                  ? '检测中...'
+                  : '未检测';
+            const providerLabel = provider === 'qwen'
+              ? '通义千问'
+              : provider === 'deepseek'
+                ? 'DeepSeek'
+                : provider === 'moonshot'
+                  ? 'Moonshot'
+                  : provider === 'gemini'
+                    ? 'Gemini'
+                    : 'OpenAI';
+
+            return (
+              <div key={`teacher-api-${provider}`} className="rounded-xl border border-slate-700/70 bg-slate-900/40 p-4">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                        <span>{providerLabel}</span>
+                        <a
+                          href={providerDocs[provider]}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-slate-400 hover:text-slate-200 transition-colors"
+                          title={`${providerLabel} API 文档`}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">{statusLabel}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-400">API Key</label>
+                    <Input
+                      type="password"
+                      value={apiSettingsDraft[provider].apiKey}
+                      onChange={(e) => setApiSettingsDraft((prev) => ({
+                        ...prev,
+                        [provider]: {
+                          ...prev[provider],
+                          apiKey: e.target.value
+                        }
+                      }))}
+                      placeholder={`输入 ${providerLabel} API Key`}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={passwordModalOpen}
+        onClose={() => {
+          if (!mustChangePassword) {
+            setPasswordModalOpen(false);
+          }
+        }}
+        title="修改管理密码"
+        closeOnOutsideClick={!mustChangePassword}
+        footer={
+          <>
+            {!mustChangePassword && (
+              <Button variant="secondary" onClick={() => setPasswordModalOpen(false)}>取消</Button>
+            )}
+            <Button onClick={handleChangePassword} isLoading={isSavingPassword} disabled={isSavingPassword}>
+              <Save className="w-4 h-4" />
+              保存新密码
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {mustChangePassword && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${
+                theme === 'light'
+                  ? 'border-amber-300 bg-amber-50 text-amber-900'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+              }`}
+            >
+              当前仍在使用默认教师密码。请先立即修改密码并妥善保存，随后系统会引导你完成 AI Key 配置。
+            </div>
+          )}
+          <Input
+            label="当前密码"
+            type="password"
+            value={passwordForm.currentPassword}
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+            placeholder={hasCustomAdminPassword(localConfig) ? '请输入当前云端管理密码' : `当前默认密码：${DEFAULT_TEACHER_PASSWORD}`}
+          />
+          <Input
+            label="新密码"
+            type="password"
+            value={passwordForm.nextPassword}
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, nextPassword: e.target.value }))}
+            placeholder="请输入新管理密码"
+          />
+          <Input
+            label="确认新密码"
+            type="password"
+            value={passwordForm.confirmPassword}
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+            placeholder="再次输入新管理密码"
+          />
+          <p className="text-xs text-slate-400 leading-relaxed">
+            修改成功后，教师端登录会优先使用云端密码校验，不再只依赖本地默认密码。
+          </p>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={usageGuideOpen}
+        onClose={() => setUsageGuideOpen(false)}
+        title="教师端使用说明"
+        footer={<Button onClick={() => setUsageGuideOpen(false)}>开始使用</Button>}
+      >
+        <div className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <p>1. 先在左侧基础设置中填写考试名称、考试时长和考试访问密钥。</p>
+          <p>2. 再进入 AI API 设置，填入可用的 AI Key，并先用“检测连通性”验证后再保存。</p>
+          <p>3. 右侧题库列表用于维护题目，你也可以使用 AI 指令辅助生成题干和模板。</p>
+          <p>4. 设置好组卷规则与分值后，记得点击保存规则配置同步到云端。</p>
+        </div>
+      </Modal>
+
       {/* Image Zoom Modal */}
       <ImageModal 
         isOpen={!!previewImage} 
@@ -412,6 +722,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ config, onUpdateCon
                         />
                         <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                     </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <Button variant="secondary" onClick={() => setApiSettingsOpen(true)} className="w-full">
+                        <Settings className="w-4 h-4" />
+                        AI API 设置
+                    </Button>
+                    <Button variant="secondary" onClick={() => setPasswordModalOpen(true)} className="w-full">
+                        <Key className="w-4 h-4" />
+                        修改管理密码
+                    </Button>
                 </div>
               </div>
            </div>

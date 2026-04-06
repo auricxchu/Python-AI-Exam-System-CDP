@@ -9,22 +9,17 @@ import {
   GradingResult,
   Question
 } from "../types";
-
-export type AiProvider = "deepseek" | "gemini" | "openai" | "qwen" | "moonshot";
+import { pingCloudProvider, requestCloudJsonText, isCloudAiProxyEnabled } from "./aiCloudService";
+import { AI_PROVIDERS, AiProvider, AiProviderConfig, AiProviderSettings } from "./aiTypes";
 
 type ProviderStatus = "ok" | "fail";
 
 const hasKey = (val?: string) => !!val && val.trim().length > 0;
-
-export interface AiProviderConfig {
-  apiKey: string;
-  model: string;
-}
-
-export type AiProviderSettings = Record<AiProvider, AiProviderConfig>;
+export type { AiProvider, AiProviderConfig, AiProviderSettings } from "./aiTypes";
 
 const AI_SETTINGS_STORAGE_KEY = "app_ai_settings";
 const SCORE_FLOOR_IF_PATH_HIT = 40;
+let runtimeAiSettings: AiProviderSettings | null = null;
 
 const DEDUCTION_CAPS: Record<DeductionCategory, number> = {
   syntax: 25,
@@ -104,21 +99,15 @@ const defaultProviderModels: Record<AiProvider, string> = {
   moonshot: process.env.MOONSHOT_MODEL || "moonshot-v1-8k"
 };
 
-const envProviderKeys: Record<AiProvider, string> = {
-  deepseek: process.env.DEEPSEEK_API_KEY || "",
-  gemini: process.env.API_KEY || "",
-  openai: process.env.OPENAI_API_KEY || "",
-  qwen: process.env.QWEN_API_KEY || "",
-  moonshot: process.env.MOONSHOT_API_KEY || ""
+const buildDefaultSettings = (): AiProviderSettings => {
+  return {
+    deepseek: { apiKey: "", model: defaultProviderModels.deepseek },
+    gemini: { apiKey: "", model: defaultProviderModels.gemini },
+    openai: { apiKey: "", model: defaultProviderModels.openai },
+    qwen: { apiKey: "", model: defaultProviderModels.qwen },
+    moonshot: { apiKey: "", model: defaultProviderModels.moonshot }
+  };
 };
-
-const buildDefaultSettings = (): AiProviderSettings => ({
-  deepseek: { apiKey: envProviderKeys.deepseek, model: defaultProviderModels.deepseek },
-  gemini: { apiKey: envProviderKeys.gemini, model: defaultProviderModels.gemini },
-  openai: { apiKey: envProviderKeys.openai, model: defaultProviderModels.openai },
-  qwen: { apiKey: envProviderKeys.qwen, model: defaultProviderModels.qwen },
-  moonshot: { apiKey: envProviderKeys.moonshot, model: defaultProviderModels.moonshot }
-});
 
 const sanitizeSettings = (
   raw: Partial<Record<AiProvider, Partial<AiProviderConfig>>> | null | undefined
@@ -150,6 +139,7 @@ const sanitizeSettings = (
 };
 
 export const getAiSettings = (): AiProviderSettings => {
+  if (runtimeAiSettings) return runtimeAiSettings;
   if (typeof window === "undefined") return buildDefaultSettings();
   try {
     const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
@@ -161,12 +151,27 @@ export const getAiSettings = (): AiProviderSettings => {
   }
 };
 
-export const saveAiSettings = (settings: AiProviderSettings): AiProviderSettings => {
+export const setRuntimeAiSettings = (settings: AiProviderSettings): AiProviderSettings => {
   const sanitized = sanitizeSettings(settings);
+  runtimeAiSettings = sanitized;
+  return sanitized;
+};
+
+export const clearRuntimeAiSettings = () => {
+  runtimeAiSettings = null;
+};
+
+export const saveAiSettings = (settings: AiProviderSettings): AiProviderSettings => {
+  const sanitized = setRuntimeAiSettings(settings);
   if (typeof window !== "undefined") {
     window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(sanitized));
   }
   return sanitized;
+};
+
+export const clearStoredAiSettings = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(AI_SETTINGS_STORAGE_KEY);
 };
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 6000): Promise<T> => {
@@ -185,7 +190,9 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 6000): Promise<T>
 
 export const getAvailableProviders = (): AiProvider[] => {
   const settings = getAiSettings();
-  return (Object.keys(settings) as AiProvider[]).filter((key) => hasKey(settings[key].apiKey));
+  const localProviders = (Object.keys(settings) as AiProvider[]).filter((key) => hasKey(settings[key].apiKey));
+  if (localProviders.length > 0) return localProviders;
+  return isCloudAiProxyEnabled() ? [...AI_PROVIDERS] : [];
 };
 
 const normalizeDifficulty = (input: string | undefined): Difficulty => {
@@ -237,6 +244,23 @@ const parseJsonObject = <T>(text: string): T => {
       return JSON.parse(normalized.slice(start, end + 1)) as T;
     }
     throw new Error("AI 返回的 JSON 无法解析");
+  }
+};
+
+const requestCloudJsonObject = async <T>(
+  provider: AiProvider,
+  schemaKind: "question_generation" | "reference_answer" | "grading",
+  systemPrompt: string,
+  userPrompt: string,
+  temperature = 0.2
+): Promise<T | null> => {
+  const text = await requestCloudJsonText(provider, schemaKind, systemPrompt, userPrompt, temperature);
+  if (!text) return null;
+  try {
+    return parseJsonObject<T>(text);
+  } catch (error) {
+    console.error(`Failed to parse cloud AI response for ${provider}:`, error);
+    return null;
   }
 };
 
@@ -314,6 +338,25 @@ ${instruction}
 
   try {
     let raw: any;
+    raw = await requestCloudJsonObject<GeneratedQuestion>(
+      provider,
+      "question_generation",
+      questionGenerationPrompt(),
+      userPrompt,
+      0.6
+    );
+    if (raw) {
+      return {
+        title: (raw.title || current.title || "???").trim(),
+        description: (raw.description || current.description || "").trim(),
+        difficulty: normalizeDifficulty(raw.difficulty),
+        template: (raw.template || current.template || "def solution():\n    pass").trim()
+      };
+    }
+    if (isCloudAiProxyEnabled()) {
+      return null;
+    }
+
     if (provider === "gemini") {
       const ai = new GoogleGenAI({ apiKey: settings.gemini.apiKey });
       const response = await ai.models.generateContent({
@@ -424,6 +467,17 @@ export const generateReferenceAnswer = async (
 ): Promise<string | null> => {
   const settings = getAiSettings();
   const key = settings[provider].apiKey;
+  const cloudRaw = await requestCloudJsonObject<RawReferenceAnswerResponse>(
+    provider,
+    "reference_answer",
+    referenceAnswerPrompt(),
+    referenceAnswerUserPrompt(title, description, template),
+    0.3
+  );
+  if (cloudRaw?.reference_answer?.trim()) {
+    return cloudRaw.reference_answer.trim();
+  }
+  if (isCloudAiProxyEnabled()) return null;
   if (!hasKey(key)) return null;
 
   try {
@@ -527,7 +581,18 @@ const pingOpenAICompatible = async (
 };
 
 export const testProviderConnection = async (provider: AiProvider): Promise<boolean> => {
-  const settings = getAiSettings();
+  return testProviderConnectionWithSettings(provider, undefined, false);
+};
+
+export const testProviderConnectionWithSettings = async (
+  provider: AiProvider,
+  settingsOverride?: AiProviderSettings,
+  preferLocal = false
+): Promise<boolean> => {
+  const cloudPing = await pingCloudProvider(provider);
+  if (isCloudAiProxyEnabled() && !preferLocal) return cloudPing;
+
+  const settings = settingsOverride ? setRuntimeAiSettings(settingsOverride) : getAiSettings();
   const key = settings[provider].apiKey;
   if (!hasKey(key)) return false;
   const apiKey = key as string;
@@ -854,6 +919,32 @@ export const gradeQuestion = async (
 
   const settings = getAiSettings();
   const key = settings[provider].apiKey;
+  const cloudRaw = await requestCloudJsonObject<RawGradingResponse>(
+    provider,
+    "grading",
+    gradingClassifierPrompt(),
+    gradingUserPrompt(title, description, code),
+    0.1
+  );
+  if (cloudRaw) {
+    const detectedTags = normalizeDetectedTags(cloudRaw.detected_tags);
+    return createResultFromSummary(
+      !!cloudRaw.path_hit,
+      detectedTags,
+      {
+        highlights: cloudRaw.feedback?.highlights?.trim() || "??????????????????",
+        mainIssues: cloudRaw.feedback?.main_issues?.trim() || "??????????????????",
+        nextSteps: cloudRaw.feedback?.suggestions?.trim() || "????????????????????"
+      },
+      { correctedAnswer: cloudRaw.corrected_answer }
+    );
+  }
+  if (isCloudAiProxyEnabled()) {
+    return createErrorGradingResult(
+      "云端 AI 服务不可用。",
+      "请联系老师检查云端模型配置或稍后重试。"
+    );
+  }
   if (!hasKey(key)) {
     return createErrorGradingResult("API Key 缺失。", "请先在 API 设置中配置对应模型的 Key。");
   }
