@@ -294,11 +294,13 @@ body {
 :root[data-theme="light"] .ring-blue-500\/20 { --tw-ring-color: #bfdbfe !important; }
 
 :root[data-theme="light"] .landing-card-watermark {
-  color: rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+  opacity: 0.12 !important;
 }
 
 :root[data-theme="light"] .group:hover .landing-card-watermark {
-  color: rgba(15, 23, 42, 0.28) !important;
+  color: #0f172a !important;
+  opacity: 0.28 !important;
 }
 
 :root[data-theme="light"] .landing-exit:hover {
@@ -319,6 +321,11 @@ body {
 
 :root[data-theme="light"] .teacher-action-edit:hover,
 :root[data-theme="light"] .teacher-action-delete:hover {
+  background-color: #f1f5f9 !important;
+}
+
+:root[data-theme="light"] .manual-paper-remove:hover {
+  color: #dc2626 !important;
   background-color: #f1f5f9 !important;
 }
 

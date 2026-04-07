@@ -1,5 +1,6 @@
 import { ExamConfig, ExamReport } from "../types";
 import { DEFAULT_CONFIG } from "../constants";
+import { normalizeExamConfig } from "./examConfigService";
 
 const CONFIG_KEY = "pyexam_config";
 const REPORT_PREFIX = "pyexam_report_";
@@ -9,17 +10,17 @@ export const storageService = {
     try {
       const stored = localStorage.getItem(CONFIG_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        return normalizeExamConfig(JSON.parse(stored));
       }
     } catch (e) {
       console.warn("Failed to load config", e);
     }
-    return DEFAULT_CONFIG;
+    return normalizeExamConfig(DEFAULT_CONFIG);
   },
 
   saveConfig: (config: ExamConfig): void => {
     try {
-      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(normalizeExamConfig(config)));
     } catch (e) {
       console.error("Failed to save config", e);
     }

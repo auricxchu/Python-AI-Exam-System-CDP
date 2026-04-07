@@ -1,4 +1,5 @@
 export type Difficulty = "简单" | "中等" | "困难";
+export type ExamAssemblyMode = "random" | "manual";
 
 export interface Question {
   id: string;
@@ -17,6 +18,11 @@ export interface RuleSettings {
   };
 }
 
+export interface ManualPaperQuestion {
+  questionId: string;
+  points: number;
+}
+
 export interface ExamConfig {
   examTitle: string;
   accessKey?: string;
@@ -25,6 +31,8 @@ export interface ExamConfig {
   duration: number;
   questionBank: Question[];
   ruleSettings: RuleSettings;
+  assemblyMode: ExamAssemblyMode;
+  manualPaperQuestions: ManualPaperQuestion[];
 }
 
 export interface UserProfile {

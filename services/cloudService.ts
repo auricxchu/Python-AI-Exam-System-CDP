@@ -2,6 +2,7 @@
 import { Question, ExamReport, ExamConfig } from "../types";
 import { DEFAULT_CONFIG, DEFAULT_QUESTIONS } from "../constants";
 import { supabase } from "./supabaseClient";
+import { normalizeExamConfig } from "./examConfigService";
 
 export interface CloudResult {
   success: boolean;
@@ -37,13 +38,13 @@ export const cloudService = {
 
       // Backward compatibility: If data is just an array of questions, wrap it
       if (Array.isArray(data.data)) {
-          return {
+          return normalizeExamConfig({
               ...DEFAULT_CONFIG,
               questionBank: data.data as Question[]
-          };
+          });
       }
 
-      return data.data as ExamConfig;
+      return normalizeExamConfig(data.data as ExamConfig);
     } catch (e) {
       console.error("Cloud fetch error:", e);
       return null;
@@ -64,7 +65,7 @@ export const cloudService = {
       // 1. Insert a new record with the entire config
       const { error } = await supabase
         .from('question_bank')
-        .insert([{ data: config }]);
+        .insert([{ data: normalizeExamConfig(config) }]);
 
       if (error) throw error;
       

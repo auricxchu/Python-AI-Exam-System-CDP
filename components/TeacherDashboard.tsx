@@ -2,10 +2,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, Plus, Trash2, Pencil, LogOut, Check, AlertTriangle, 
-  Database, Filter, ChevronRight, ChevronDown, Cloud, CloudUpload, RefreshCw, Loader2, Key,
+  Database, Filter, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Cloud, CloudUpload, RefreshCw, Loader2, Key,
   FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon, Wand2
 } from 'lucide-react';
-import { ExamConfig, Question, Difficulty } from '../types';
+import { ExamConfig, Question, Difficulty, ExamAssemblyMode } from '../types';
 import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings } from '../services/aiService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, hashAdminPassword, verifyAdminPassword } from '../services/adminAuthService';
 import { Button, Input, Badge } from './ui';
@@ -16,6 +16,7 @@ import { storageService } from '../services/storageService';
 import { cloudService } from '../services/cloudService';
 import { useResolvedImageUrl } from '../hooks/useResolvedImageUrl';
 import { teacherSessionService } from '../services/teacherSessionService';
+import { calculateManualPaperTotal, calculateRandomPaperTotal, getDefaultQuestionPoints } from '../services/examConfigService';
 
 interface TeacherDashboardProps {
   config: ExamConfig;
@@ -153,6 +154,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         setNotif({ msg: "保存失败: 必须设置考试访问密钥", type: "warning" });
         return;
     }
+    if (localConfig.assemblyMode === 'manual') {
+      if (localConfig.manualPaperQuestions.length === 0) {
+        setNotif({ msg: "保存失败: 自由组卷至少需要选择一道题目", type: "warning" });
+        return;
+      }
+      if (localConfig.manualPaperQuestions.some((item) => item.points <= 0)) {
+        setNotif({ msg: "保存失败: 自由组卷中的题目分值必须大于 0", type: "warning" });
+        return;
+      }
+    }
 
     setIsSyncing(true);
     setSyncStatusText("正在保存规则...");
@@ -282,6 +293,67 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         [diff]: { ...prev.ruleSettings[diff], [field]: num }
       }
     }));
+  };
+
+  const handleAssemblyModeChange = (mode: ExamAssemblyMode) => {
+    setLocalConfig((prev) => ({
+      ...prev,
+      assemblyMode: mode
+    }));
+  };
+
+  const handleAddQuestionToPaper = (question: Question) => {
+    setLocalConfig((prev) => {
+      if (prev.manualPaperQuestions.some((item) => item.questionId === question.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        assemblyMode: 'manual',
+        manualPaperQuestions: [
+          ...prev.manualPaperQuestions,
+          {
+            questionId: question.id,
+            points: getDefaultQuestionPoints(question, prev.ruleSettings)
+          }
+        ]
+      };
+    });
+    setNotif({ msg: `已将《${question.title}》添加到试卷`, type: "success" });
+  };
+
+  const handleRemoveQuestionFromPaper = (questionId: string) => {
+    setLocalConfig((prev) => ({
+      ...prev,
+      manualPaperQuestions: prev.manualPaperQuestions.filter((item) => item.questionId !== questionId)
+    }));
+  };
+
+  const handleManualQuestionPointsChange = (questionId: string, value: string) => {
+    const points = parseInt(value) || 0;
+    setLocalConfig((prev) => ({
+      ...prev,
+      manualPaperQuestions: prev.manualPaperQuestions.map((item) => (
+        item.questionId === questionId
+          ? { ...item, points }
+          : item
+      ))
+    }));
+  };
+
+  const handleMoveManualQuestion = (index: number, direction: 'up' | 'down') => {
+    setLocalConfig((prev) => {
+      const next = [...prev.manualPaperQuestions];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev;
+      }
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return {
+        ...prev,
+        manualPaperQuestions: next
+      };
+    });
   };
 
   // 1. Select File (Local Preview Only)
@@ -417,7 +489,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     if (!deleteId) return;
     
     const updatedQuestions = localConfig.questionBank.filter(q => q.id !== deleteId);
-    const newConfig = { ...localConfig, questionBank: updatedQuestions };
+    const newConfig = {
+      ...localConfig,
+      questionBank: updatedQuestions,
+      manualPaperQuestions: localConfig.manualPaperQuestions.filter((item) => item.questionId !== deleteId)
+    };
     
     setLocalConfig(newConfig);
     onUpdateConfig(newConfig);
@@ -440,11 +516,37 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   };
 
   const filteredQuestions = localConfig.questionBank.filter(q => filterDiff === 'all' || q.difficulty === filterDiff);
+  const selectedQuestionIds = new Set(localConfig.manualPaperQuestions.map((item) => item.questionId));
+  const manualPaperEntries = localConfig.manualPaperQuestions.map((item, index) => ({
+    ...item,
+    index,
+    question: localConfig.questionBank.find((question) => question.id === item.questionId) || null
+  }));
+  const manualDifficultyCounts = manualPaperEntries.reduce<Record<Difficulty, number>>((acc, item) => {
+    if (item.question) {
+      acc[item.question.difficulty] += 1;
+    }
+    return acc;
+  }, { 简单: 0, 中等: 0, 困难: 0 });
 
-  const totalScore = 
-    (localConfig.ruleSettings["简单"].count * localConfig.ruleSettings["简单"].points) +
-    (localConfig.ruleSettings["中等"].count * localConfig.ruleSettings["中等"].points) +
-    (localConfig.ruleSettings["困难"].count * localConfig.ruleSettings["困难"].points);
+  const totalScore = localConfig.assemblyMode === 'manual'
+    ? calculateManualPaperTotal(localConfig.manualPaperQuestions)
+    : calculateRandomPaperTotal(localConfig.ruleSettings);
+  const manualPaperActionButtonClass = `rounded p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+    theme === 'light'
+      ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+  }`;
+  const manualPaperRemoveButtonClass = `rounded p-2 transition-colors ${
+    theme === 'light'
+      ? 'text-slate-500 hover:bg-red-50 hover:text-red-500'
+      : 'text-slate-400 hover:bg-slate-800 hover:text-red-400'
+  }`;
+  const manualPaperPointsInputClass = `w-16 rounded-lg border px-2.5 py-1 text-sm font-semibold outline-none transition-colors ${
+    theme === 'light'
+      ? 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+      : 'border-slate-700 bg-slate-800 text-white focus:border-blue-500'
+  }`;
 
   // Determine what image to show in the form
   const displayImageUrl = localPreviewUrl || questionForm.imageUrl;
@@ -724,6 +826,30 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     </div>
                 </div>
 
+                <div>
+                    <label className="block text-slate-400 text-xs mb-2 font-medium">组卷方式</label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {[
+                          { id: 'random' as const, label: '随机抽题', desc: '按难度规则自动组卷' },
+                          { id: 'manual' as const, label: '自由选题', desc: '从题库自由挑选试卷题目' }
+                        ].map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => handleAssemblyModeChange(option.id)}
+                            className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                              localConfig.assemblyMode === option.id
+                                ? 'border-blue-500 bg-blue-500/10 text-white'
+                                : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                            }`}
+                          >
+                            <div className="text-sm font-bold">{option.label}</div>
+                            <div className="mt-1 text-xs opacity-80">{option.desc}</div>
+                          </button>
+                        ))}
+                    </div>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                     <Button variant="secondary" onClick={() => setApiSettingsOpen(true)} className="w-full">
                         <Settings className="w-4 h-4" />
@@ -737,47 +863,130 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
            </div>
 
-           {/* Exam Rules */}
-           <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
-             <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">组卷规则 & 分值</h3>
-             
-             <div className="overflow-hidden rounded-lg border border-slate-800 mb-4">
-               <div className="grid grid-cols-4 bg-slate-800/50 p-2 text-xs font-bold text-slate-500 text-center">
-                 <div>难度</div>
-                 <div>抽题数</div>
-                 <div>单题分</div>
-                 <div>小计</div>
+           {localConfig.assemblyMode === 'random' ? (
+             <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
+               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">随机抽题设置</h3>
+               
+               <div className="overflow-hidden rounded-lg border border-slate-800 mb-4">
+                 <div className="grid grid-cols-4 bg-slate-800/50 p-2 text-xs font-bold text-slate-500 text-center">
+                   <div>难度</div>
+                   <div>抽题数</div>
+                   <div>单题分</div>
+                   <div>小计</div>
+                 </div>
+                 {["简单", "中等", "困难"].map(diff => {
+                   const rule = localConfig.ruleSettings[diff];
+                   const color = diff === "简单" ? "text-green-400" : diff === "中等" ? "text-yellow-400" : "text-red-400";
+                   return (
+                     <div key={diff} className="grid grid-cols-4 p-2 items-center border-t border-slate-800 bg-slate-900">
+                       <div className={`${color} font-bold text-sm text-center`}>{diff}</div>
+                       <div className="px-2">
+                          <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-sm text-center" value={rule.count} onChange={e => handleRuleChange(diff, 'count', e.target.value)} />
+                       </div>
+                       <div className="px-2">
+                          <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-sm text-center" value={rule.points} onChange={e => handleRuleChange(diff, 'points', e.target.value)} />
+                       </div>
+                       <div className="text-center text-sm font-bold text-slate-400">
+                          {rule.count * rule.points}
+                       </div>
+                     </div>
+                   );
+                 })}
                </div>
-               {["简单", "中等", "困难"].map(diff => {
-                 const rule = localConfig.ruleSettings[diff];
-                 const color = diff === "简单" ? "text-green-400" : diff === "中等" ? "text-yellow-400" : "text-red-400";
-                 return (
-                   <div key={diff} className="grid grid-cols-4 p-2 items-center border-t border-slate-800 bg-slate-900">
-                     <div className={`${color} font-bold text-sm text-center`}>{diff}</div>
-                     <div className="px-2">
-                        <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-sm text-center" value={rule.count} onChange={e => handleRuleChange(diff, 'count', e.target.value)} />
-                     </div>
-                     <div className="px-2">
-                        <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-sm text-center" value={rule.points} onChange={e => handleRuleChange(diff, 'points', e.target.value)} />
-                     </div>
-                     <div className="text-center text-sm font-bold text-slate-400">
-                        {rule.count * rule.points}
-                     </div>
+
+               <div className="flex justify-between items-center text-xs text-slate-500 mb-6 px-1">
+                 <span>题库组成: 简{localConfig.ruleSettings["简单"].count}/ 中{localConfig.ruleSettings["中等"].count}/ 困{localConfig.ruleSettings["困难"].count}</span>
+                 <span className="font-bold text-white text-base">总分: {totalScore}</span>
+               </div>
+
+               <Button className="w-full" onClick={handleSaveConfig} disabled={isSyncing}>
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
+                  {isSyncing ? "正在同步..." : "保存随机组卷配置"}
+               </Button>
+             </div>
+           ) : (
+             <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
+               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">自由选题设置</h3>
+
+               <div className="space-y-3">
+                 {manualPaperEntries.length === 0 ? (
+                   <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-4 py-6 text-sm leading-relaxed text-slate-400">
+                     右侧题库中的题目在自由选题模式下会出现“添加到试卷”按钮。先选择题目，再回到这里调整顺序和分值。
                    </div>
-                 );
-               })}
-             </div>
+                 ) : (
+                   manualPaperEntries.map((item) => (
+                     <div key={item.questionId} className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-3 transition-all hover:border-slate-600">
+                       <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                           <div className="flex items-center gap-2">
+                             <h4 className="truncate text-sm font-bold text-white">{item.index + 1}. {item.question?.title || '题目已不存在'}</h4>
+                             <Badge color={item.question?.difficulty === '简单' ? 'green' : item.question?.difficulty === '中等' ? 'yellow' : 'red'}>
+                               {item.question?.difficulty || '异常'}
+                             </Badge>
+                           </div>
+                           {!item.question && (
+                             <div className="mt-1.5">
+                               <span className="text-xs text-red-400">该题已从题库移除，建议移出试卷。</span>
+                             </div>
+                           )}
+                         </div>
+                         <div className="flex shrink-0 items-center gap-1.5">
+                           <span className="text-xs font-medium text-slate-400">分值</span>
+                           <input
+                             type="number"
+                             min={1}
+                             className={manualPaperPointsInputClass}
+                             value={item.points}
+                             onChange={(e) => handleManualQuestionPointsChange(item.questionId, e.target.value)}
+                           />
+                           <button
+                             type="button"
+                             onClick={() => handleMoveManualQuestion(item.index, 'up')}
+                             disabled={item.index === 0}
+                             className={manualPaperActionButtonClass}
+                             title="上移"
+                           >
+                             <ArrowUp className="w-4 h-4" />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() => handleMoveManualQuestion(item.index, 'down')}
+                             disabled={item.index === manualPaperEntries.length - 1}
+                             className={manualPaperActionButtonClass}
+                             title="下移"
+                           >
+                             <ArrowDown className="w-4 h-4" />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() => handleRemoveQuestionFromPaper(item.questionId)}
+                             className={`manual-paper-remove ${manualPaperRemoveButtonClass}`}
+                             title="移出试卷"
+                           >
+                             <X className="w-4 h-4" />
+                           </button>
+                         </div>
+                       </div>
+                     </div>
+                   ))
+                 )}
+               </div>
 
-             <div className="flex justify-between items-center text-xs text-slate-500 mb-6 px-1">
-               <span>题库组成: 简{localConfig.ruleSettings["简单"].count}/ 中{localConfig.ruleSettings["中等"].count}/ 困{localConfig.ruleSettings["困难"].count}</span>
-               <span className="font-bold text-white text-base">总分: {totalScore}</span>
-             </div>
+               <div className="mt-5 flex items-center justify-between text-xs text-slate-500">
+                 <span>试卷组成: 简{manualDifficultyCounts["简单"]}/ 中{manualDifficultyCounts["中等"]}/ 困{manualDifficultyCounts["困难"]}</span>
+                 <span>已选 {manualPaperEntries.length} 题</span>
+               </div>
+               <div className="mt-2 flex items-center justify-between px-1">
+                 <span className="text-sm text-slate-400">试卷总分</span>
+                 <span className="text-lg font-bold text-white">{totalScore}</span>
+               </div>
 
-             <Button className="w-full" onClick={handleSaveConfig} disabled={isSyncing}>
-                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
-                {isSyncing ? "正在同步..." : "保存规则配置"}
-             </Button>
-           </div>
+               <Button className="mt-5 w-full" onClick={handleSaveConfig} disabled={isSyncing}>
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
+                  {isSyncing ? "正在同步..." : "保存自由组卷配置"}
+               </Button>
+             </div>
+           )}
         </div>
 
         {/* Right Panel: Content - Fills Height */}
@@ -839,9 +1048,48 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                   </div>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
+                              {localConfig.assemblyMode === 'manual' && (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (selectedQuestionIds.has(q.id)) {
+                                        handleRemoveQuestionFromPaper(q.id);
+                                      } else {
+                                        handleAddQuestionToPaper(q);
+                                      }
+                                    }}
+                                    className={`group p-2 rounded transition-colors ${
+                                      selectedQuestionIds.has(q.id)
+                                        ? (
+                                            theme === 'light'
+                                              ? 'text-emerald-600 hover:text-red-500 hover:bg-slate-100'
+                                              : 'text-green-400 hover:text-red-400 hover:bg-slate-800'
+                                          )
+                                        : (
+                                            theme === 'light'
+                                              ? 'text-slate-500 hover:text-emerald-600 hover:bg-slate-100'
+                                              : 'text-slate-500 hover:text-green-400 hover:bg-slate-800'
+                                          )
+                                    }`}
+                                    title={selectedQuestionIds.has(q.id) ? '移出试卷' : '添加到试卷'}
+                                  >
+                                    {selectedQuestionIds.has(q.id) ? (
+                                      <>
+                                        <Check className="w-4 h-4 block group-hover:hidden" />
+                                        <X className="w-4 h-4 hidden group-hover:block" />
+                                      </>
+                                    ) : (
+                                      <Plus className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </>
+                              )}
+                              <div className="flex gap-2">
                               <button onClick={(e) => { e.stopPropagation(); startEdit(q); }} className="teacher-action-edit p-2 text-slate-500 hover:text-blue-400 hover:bg-slate-800 rounded transition-colors"><Pencil className="w-4 h-4"/></button>
                               <button onClick={(e) => { e.stopPropagation(); setDeleteId(q.id); }} className="teacher-action-delete p-2 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"><Trash2 className="w-4 h-4"/></button>
+                              </div>
                             </div>
                           </div>
                           {expandedId === q.id && (

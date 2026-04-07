@@ -8,11 +8,12 @@ import { cloudService } from './services/cloudService';
 import { AiProvider, AiProviderSettings, clearRuntimeAiSettings, clearStoredAiSettings, getAiSettings, getAvailableProviders, setRuntimeAiSettings, testProviderConnection } from './services/aiService';
 import { fetchCloudAiSettings, saveCloudAiSettings } from './services/aiCloudService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, verifyAdminPassword } from './services/adminAuthService';
-import { ExamConfig, Question, RuleSettings, UserProfile } from './types';
+import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
+import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
@@ -26,35 +27,9 @@ type StudentLoginForm = HTMLFormElement & {
   accessKey?: HTMLInputElement;
 };
 
-const shuffleArray = <T,>(array: T[]): T[] => {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
-
-const generateQuestions = (pool: Question[], rules: RuleSettings): Question[] => {
-  const simple = pool.filter(q => q.difficulty === '简单');
-  const medium = pool.filter(q => q.difficulty === '中等');
-  const hard = pool.filter(q => q.difficulty === '困难');
-
-  const select = (source: Question[], rule?: RuleSettings[string]) => {
-    if (!rule) return [];
-    return shuffleArray(source).slice(0, rule.count || 0).map(q => ({ ...q, points: rule.points }));
-  };
-
-  return [
-    ...select(simple, rules['简单']),
-    ...select(medium, rules['中等']),
-    ...select(hard, rules['困难'])
-  ];
-};
-
 export default function App() {
   const [mode, setMode] = useState<AppMode>('landing');
-  const [config, setConfig] = useState<ExamConfig>(storageService.loadConfig());
+  const [config, setConfig] = useState<ExamConfig>(() => normalizeExamConfig(storageService.loadConfig()));
   const [openingDone, setOpeningDone] = useState(false);
   const [openingVariant, setOpeningVariant] = useState<'full' | 'lite'>(() => (
     localStorage.getItem(OPENING_SEEN_KEY) === '1' ? 'lite' : 'full'
@@ -101,7 +76,7 @@ export default function App() {
         const cloudConfig = await cloudService.fetchExamConfig();
         if (cloudConfig) {
             console.log("App: Synced exam config from cloud");
-            setConfig(cloudConfig);
+            setConfig(normalizeExamConfig(cloudConfig));
         }
     };
     syncConfig();
@@ -414,7 +389,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
       teacherSessionService.remember(pwd);
       if (cloudConfig) {
-        setConfig(cloudConfig);
+        setConfig(normalizeExamConfig(cloudConfig));
       }
       const cloudAiSettings = await fetchCloudAiSettings();
       if (cloudAiSettings) {
@@ -463,9 +438,9 @@ const requestEnterMode = (nextMode: AppMode) => {
       }
 
       setStudentUser({ name, studentId: sid, joinedAt: new Date().toISOString() });
-      const questions = generateQuestions(config.questionBank, config.ruleSettings);
+      const questions = buildExamQuestions(config);
       if (questions.length === 0) {
-        showAppAlert("组卷失败：题库题目不足，请联系老师。");
+        showAppAlert(config.assemblyMode === 'manual' ? "组卷失败：当前试卷还没有选择题目，请联系老师。" : "组卷失败：题库题目不足，请联系老师。");
         return;
       }
       setExamQuestions(questions);
@@ -691,7 +666,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                      <div className="bg-blue-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
                        <GraduationCap className="w-8 h-8 text-blue-400" />
                      </div>
-                     <GraduationCap className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-blue-900/10 transition-colors transform rotate-12 landing-card-watermark" />
+                     <GraduationCap className="w-32 h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform rotate-12 opacity-20 group-hover:opacity-30 landing-card-watermark" />
                   </div>
                   <h2 className="text-2xl font-bold text-white mb-2">我是学生</h2>
                   <p className="text-slate-400 text-sm mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
@@ -708,7 +683,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                      <div className="bg-purple-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
                        <Monitor className="w-8 h-8 text-purple-400" />
                      </div>
-                     <Monitor className="w-32 h-32 text-slate-800/50 absolute -right-6 -bottom-6 group-hover:text-purple-900/10 transition-colors transform -rotate-6 landing-card-watermark" />
+                     <Monitor className="w-32 h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform -rotate-6 opacity-20 group-hover:opacity-30 landing-card-watermark" />
                   </div>
                   <h2 className="text-2xl font-bold text-white mb-2">我是老师</h2>
                   <p className="text-slate-400 text-sm mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>

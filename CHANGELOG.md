@@ -16,6 +16,9 @@
 - Simplify the exam info section into a single-column layout with tighter, more consistent spacing.
 - Restore readable Chinese copy in the student report page by removing Unicode escapes and cleaning display text.
 - Tighten Tailwind content scanning and clean up App/type definitions to reduce dead code and unsafe typing.
+- Add dual paper assembly modes in the teacher dashboard: keep random draw rules and add manual paper building with per-question selection, scoring, ordering, and validation.
+- Normalize exam config persistence for the new manual-paper structure across local storage, cloud sync, and student-side paper generation.
+- Refine manual-paper UX with compact left-side cards, icon-based add/remove/reorder actions, theme-aware hover states, and landing-card watermark polish in light mode.
 
 - Refine the API settings modal into a simpler desktop-style layout with unified scrollbar styling.
 - Add lite opening screen flow and keep the full opening animation for first launch.
