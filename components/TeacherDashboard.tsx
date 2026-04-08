@@ -532,6 +532,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const totalScore = localConfig.assemblyMode === 'manual'
     ? calculateManualPaperTotal(localConfig.manualPaperQuestions)
     : calculateRandomPaperTotal(localConfig.ruleSettings);
+  const selectedQuestionCount = localConfig.assemblyMode === 'manual'
+    ? manualPaperEntries.length
+    : localConfig.ruleSettings["简单"].count + localConfig.ruleSettings["中等"].count + localConfig.ruleSettings["困难"].count;
+  const paperCompositionText = localConfig.assemblyMode === 'manual'
+    ? `简${manualDifficultyCounts["简单"]}/ 中${manualDifficultyCounts["中等"]}/ 困${manualDifficultyCounts["困难"]}`
+    : `简${localConfig.ruleSettings["简单"].count}/ 中${localConfig.ruleSettings["中等"].count}/ 困${localConfig.ruleSettings["困难"].count}`;
   const manualPaperActionButtonClass = `rounded p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
     theme === 'light'
       ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
@@ -768,7 +774,6 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
            )}
          </div>
          <div className="flex items-center gap-4 text-slate-400 text-sm">
-           <span>{"当前试卷设计总分"}: <span className="text-blue-400 font-bold">{totalScore}</span> {"分"}</span>
            <button
              onClick={onExit}
              className="flex items-center gap-2 px-3 py-1.5 min-w-[96px] justify-center bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
@@ -863,10 +868,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
            </div>
 
-           {localConfig.assemblyMode === 'random' ? (
-             <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
-               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">随机抽题设置</h3>
-               
+           <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50 min-h-[420px]">
+             <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
+               {localConfig.assemblyMode === 'random' ? '随机抽题设置' : '自由选题设置'}
+             </h3>
+
+             {localConfig.assemblyMode === 'random' ? (
                <div className="overflow-hidden rounded-lg border border-slate-800 mb-4">
                  <div className="grid grid-cols-4 bg-slate-800/50 p-2 text-xs font-bold text-slate-500 text-center">
                    <div>难度</div>
@@ -893,21 +900,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                    );
                  })}
                </div>
-
-               <div className="flex justify-between items-center text-xs text-slate-500 mb-6 px-1">
-                 <span>题库组成: 简{localConfig.ruleSettings["简单"].count}/ 中{localConfig.ruleSettings["中等"].count}/ 困{localConfig.ruleSettings["困难"].count}</span>
-                 <span className="font-bold text-white text-base">总分: {totalScore}</span>
-               </div>
-
-               <Button className="w-full" onClick={handleSaveConfig} disabled={isSyncing}>
-                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
-                  {isSyncing ? "正在同步..." : "保存随机组卷配置"}
-               </Button>
-             </div>
-           ) : (
-             <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
-               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">自由选题设置</h3>
-
+             ) : (
                <div className="space-y-3">
                  {manualPaperEntries.length === 0 ? (
                    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-4 py-6 text-sm leading-relaxed text-slate-400">
@@ -971,22 +964,27 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                    ))
                  )}
                </div>
+             )}
 
-               <div className="mt-5 flex items-center justify-between text-xs text-slate-500">
-                 <span>试卷组成: 简{manualDifficultyCounts["简单"]}/ 中{manualDifficultyCounts["中等"]}/ 困{manualDifficultyCounts["困难"]}</span>
-                 <span>已选 {manualPaperEntries.length} 题</span>
+             <div className={`${localConfig.assemblyMode === 'manual' ? 'mt-5' : ''} mb-6 px-1`}>
+               <div className="flex items-center justify-between text-xs text-slate-500">
+                 <span>试卷组成: {paperCompositionText}</span>
+                 <span>已选题目: {selectedQuestionCount} 题</span>
                </div>
-               <div className="mt-2 flex items-center justify-between px-1">
+               <div className="mt-3 flex items-end justify-between border-t border-slate-800 pt-3">
                  <span className="text-sm text-slate-400">试卷总分</span>
-                 <span className="text-lg font-bold text-white">{totalScore}</span>
+                 <div className="flex items-end gap-2">
+                   <span className="text-2xl font-bold text-blue-500">{totalScore}</span>
+                   <span className="pb-1 text-sm font-medium text-slate-400">分</span>
+                 </div>
                </div>
-
-               <Button className="mt-5 w-full" onClick={handleSaveConfig} disabled={isSyncing}>
-                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
-                  {isSyncing ? "正在同步..." : "保存自由组卷配置"}
-               </Button>
              </div>
-           )}
+
+             <Button className={`${localConfig.assemblyMode === 'manual' ? 'mt-5' : ''} w-full`} onClick={handleSaveConfig} disabled={isSyncing}>
+                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
+                {isSyncing ? "正在同步..." : (localConfig.assemblyMode === 'manual' ? "保存自由组卷配置" : "保存随机组卷配置")}
+             </Button>
+           </div>
         </div>
 
         {/* Right Panel: Content - Fills Height */}

@@ -135,11 +135,15 @@ const startImeHelper = () => {
 };
 
 function createWindow() {
+  const windowIcon = app.isPackaged
+    ? path.join(process.resourcesPath, 'external-sources', 'app_icon.ico')
+    : path.join(__dirname, '../external-sources/app_icon.ico');
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     fullscreen: true, // Open in fullscreen
     autoHideMenuBar: true, // Hide the menu bar
+    icon: windowIcon,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false, // For simple compatibility

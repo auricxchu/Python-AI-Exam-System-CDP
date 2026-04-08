@@ -39,12 +39,25 @@
   },
   "build": {
     "appId": "com.exam.system",
+    "icon": "build/app_icon.ico",
     "productName": "Python智能考试系统",
     "files": [
       "dist/**/*",
       "electron/**/*"
     ],
     "extraResources": [
+      {
+        "from": "external-sources/app_icon.ico",
+        "to": "external-sources/app_icon.ico"
+      },
+      {
+        "from": "external-sources/setup_icon.ico",
+        "to": "external-sources/setup_icon.ico"
+      },
+      {
+        "from": "external-sources/uninstall_icon.ico",
+        "to": "external-sources/uninstall_icon.ico"
+      },
       {
         "from": "electron/ime-helper/ime-helper.exe",
         "to": "ime-helper/ime-helper.exe"
@@ -54,7 +67,13 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/app_icon.ico"
+    },
+    "nsis": {
+      "installerIcon": "build/setup_icon.ico",
+      "uninstallerIcon": "build/uninstall_icon.ico",
+      "installerHeaderIcon": "build/setup_icon.ico"
     },
     "mac": {
       "target": "dmg"
