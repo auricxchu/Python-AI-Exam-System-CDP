@@ -551,7 +551,7 @@ const requestEnterMode = (nextMode: AppMode) => {
           onComplete={handleOpeningComplete}
         />
       )}
-      <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-start px-4 sm:px-6 pt-8 sm:pt-12 md:pt-16 pb-8 relative overflow-y-auto font-sans text-slate-200">
+      <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center px-4 sm:px-6 pt-8 sm:pt-12 md:pt-16 pb-8 relative overflow-hidden font-sans text-slate-200">
       {/* Background FX */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
          <div className="landing-orb landing-orb--a" />

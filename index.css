@@ -902,6 +902,45 @@ body.splitter-dragging .splitter-horizontal {
   transform: translateY(0);
 }
 
+/* Short screen (≤800px height): shrink landing page to fit without scrolling */
+@media (max-height: 800px) {
+  .landing-content {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+  .landing-shell {
+    padding-top: 1rem !important;
+  }
+  .landing-shell h1 {
+    font-size: 1.5rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+  .landing-shell h1 + p {
+    font-size: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+  .landing-shell .model-picker {
+    margin-bottom: 0.75rem !important;
+  }
+  .landing-shell .grid {
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+  .landing-shell .grid button {
+    padding: 1rem !important;
+  }
+  .landing-shell .grid button h2 {
+    font-size: 1.125rem !important;
+  }
+  .landing-shell .grid button p {
+    font-size: 0.7rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  .landing-exit {
+    margin-top: 0.25rem !important;
+  }
+}
+
 .opening-editor {
   will-change: transform, opacity;
 }
