@@ -906,22 +906,11 @@ body.splitter-dragging .splitter-horizontal {
   transform: translateY(0);
 }
 
-/* Short screen: proportionally scale landing content to fit without scrolling */
+/* Short screen: dynamically scale landing content to fit without scrolling */
 .landing-content {
-  --landing-scale: 1;
+  --landing-scale: min(1, calc((100vh - 5rem) / 950));
   transform: scale(var(--landing-scale));
   transform-origin: top center;
-}
-
-@media (max-height: 850px) {
-  .landing-shell { padding-top: 1rem !important; }
-  .landing-content { --landing-scale: 0.85; }
-}
-@media (max-height: 750px) {
-  .landing-content { --landing-scale: 0.76; }
-}
-@media (max-height: 650px) {
-  .landing-content { --landing-scale: 0.68; }
 }
 
 .opening-editor {
