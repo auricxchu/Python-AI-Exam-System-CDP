@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
@@ -11,7 +11,7 @@ import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, verifyAdminPassword }
 import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input } from './components/ui';
 import Modal from './components/Modal';
-import OpeningScreen from './components/OpeningScreen';
+import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
 import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
 import { SUPABASE_URL } from './services/supabaseClient';
@@ -107,17 +107,22 @@ export default function App() {
     }
   }, [mode]);
 
+  const handleOpeningComplete = useCallback(() => {
+    setOpeningDone(true);
+    if (openingVariant === 'full') {
+      localStorage.setItem(OPENING_SEEN_KEY, '1');
+      setOpeningVariant('lite');
+    }
+  }, [openingVariant]);
+
   useEffect(() => {
     if (openingDone) return;
-    const fallbackMs = openingVariant === 'lite' ? 5600 : 12000;
-    const timer = window.setTimeout(() => {
-      setOpeningDone(true);
-      if (openingVariant === 'full') {
-        localStorage.setItem(OPENING_SEEN_KEY, '1');
-      }
-    }, fallbackMs);
+    const fallbackMs = openingVariant === 'lite'
+      ? OPENING_TIMING.lite.fallbackMs
+      : OPENING_TIMING.full.fallbackMs;
+    const timer = window.setTimeout(handleOpeningComplete, fallbackMs);
     return () => window.clearTimeout(timer);
-  }, [openingDone, openingVariant]);
+  }, [handleOpeningComplete, openingDone, openingVariant]);
 
   useEffect(() => {
     if (openingDone && mode === 'landing') {
@@ -191,14 +196,6 @@ export default function App() {
     clearStoredAiSettings();
     checkProviders();
     return cloudResult;
-  };
-
-  const handleOpeningComplete = () => {
-    setOpeningDone(true);
-    if (openingVariant === 'full') {
-      localStorage.setItem(OPENING_SEEN_KEY, '1');
-      setOpeningVariant('lite');
-    }
   };
 
   useEffect(() => {
@@ -862,4 +859,3 @@ const requestEnterMode = (nextMode: AppMode) => {
     </>
   );
 }
-

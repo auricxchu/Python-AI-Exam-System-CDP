@@ -1,7 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon';
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+export const OPENING_TIMING = {
+  fadeOutMs: 800,
+  statusRotationMs: 1400,
+  initTimeoutMs: {
+    full: 5000,
+    lite: 2200
+  },
+  lite: {
+    visibleMs: 5000,
+    fallbackMs: 7000
+  },
+  full: {
+    initialDelayMs: 500,
+    preludeTypeMs: 30,
+    preludeHoldMs: 500,
+    preludeDeleteMs: 16,
+    preludeGapMs: 200,
+    newlinePauseMs: 30,
+    tokenDelayMinMs: 5,
+    tokenDelayJitterMs: 10,
+    stepPauseMs: {
+      default: 800,
+      step2: 1400,
+      step3: 1000
+    },
+    postTypingDelayMs: 500,
+    readyHoldMs: 1900,
+    editorExitMs: 1000,
+    fallbackMs: 18000
+  }
+} as const;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type TokenType = 'keyword' | 'function' | 'string' | 'number' | 'comment' | 'variable' | 'operator' | 'default';
 type ThemeMode = 'light' | 'dark';
@@ -91,7 +123,7 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
       let currentLine = 1;
       let readyShown = false;
 
-      await sleep(500);
+      await sleep(OPENING_TIMING.full.initialDelayMs);
       if (codeRef.current) codeRef.current.innerHTML = '';
 
       onPrelude(true);
@@ -105,10 +137,10 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
         if (codeRef.current) {
           codeRef.current.innerHTML = `<span style="color: ${preludeColor}">${partial}</span>`;
         }
-        await sleep(30);
+        await sleep(OPENING_TIMING.full.preludeTypeMs);
       }
 
-      await sleep(500);
+      await sleep(OPENING_TIMING.full.preludeHoldMs);
 
       for (let i = prelude.length; i >= 0; i -= 1) {
         if (!aliveRef.current) return;
@@ -119,10 +151,10 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
             ? `<span style="color: ${preludeColor}">${partial}</span>`
             : '';
         }
-        await sleep(16);
+        await sleep(OPENING_TIMING.full.preludeDeleteMs);
       }
 
-      await sleep(200);
+      await sleep(OPENING_TIMING.full.preludeGapMs);
       onPreludeText('');
       onPrelude(false);
 
@@ -141,10 +173,14 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
               onReady();
               readyShown = true;
             }
-            const pauseTime = step === 2 ? 1400 : step === 3 ? 1000 : 800;
+            const pauseTime = step === 2
+              ? OPENING_TIMING.full.stepPauseMs.step2
+              : step === 3
+                ? OPENING_TIMING.full.stepPauseMs.step3
+                : OPENING_TIMING.full.stepPauseMs.default;
             await sleep(pauseTime);
           } else {
-            await sleep(30);
+            await sleep(OPENING_TIMING.full.newlinePauseMs);
           }
           continue;
         }
@@ -159,24 +195,24 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
           if (codeRef.current) {
             codeRef.current.innerHTML = currentHtml + `<span style="color: ${color}">${partial}</span>`;
           }
-          await sleep(Math.random() * 10 + 5);
+          await sleep(Math.random() * OPENING_TIMING.full.tokenDelayJitterMs + OPENING_TIMING.full.tokenDelayMinMs);
         }
 
         currentHtml += `<span style="color: ${color}">${t.text}</span>`;
       }
 
-      await sleep(500);
+      await sleep(OPENING_TIMING.full.postTypingDelayMs);
       if (!aliveRef.current) return;
       if (!readyShown) {
         onReady();
       }
-      await sleep(1900);
+      await sleep(OPENING_TIMING.full.readyHoldMs);
       if (!aliveRef.current) return;
       onEditorExit(true);
-      await sleep(500);
+      await sleep(OPENING_TIMING.full.editorExitMs);
       if (!aliveRef.current) return;
       onFadeOut(true);
-      await sleep(300);
+      await sleep(OPENING_TIMING.fadeOutMs);
       if (!aliveRef.current) return;
       onComplete();
     };
@@ -241,7 +277,7 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
       try {
         await Promise.race([
           Promise.resolve(onInit?.()),
-          sleep(variant === 'lite' ? 2200 : 5000)
+          sleep(OPENING_TIMING.initTimeoutMs[variant])
         ]);
       } catch (error) {
         console.error('Opening init failed', error);
@@ -260,7 +296,7 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
     const timer = window.setInterval(() => {
       idx = (idx + 1) % initSteps.length;
       setInitIndex(idx);
-    }, 1400);
+    }, OPENING_TIMING.statusRotationMs);
     return () => window.clearInterval(timer);
   }, [fadeOut, initSteps]);
 
@@ -269,10 +305,10 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
     let alive = true;
     const runLite = async () => {
       setShowCopy(true);
-      await sleep(5000);
+      await sleep(OPENING_TIMING.lite.visibleMs);
       if (!alive) return;
       setFadeOut(true);
-      await sleep(900);
+      await sleep(OPENING_TIMING.fadeOutMs);
       if (!alive) return;
       handleComplete();
     };
@@ -283,9 +319,13 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
   }, [variant, handleComplete]);
 
   const openingClassName = `opening-screen fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden font-mono select-none ${fadeOut ? 'opening-fadeout' : ''} ${showCopy ? 'opening-subtitle-visible' : ''} ${theme === 'light' ? 'opening-theme-light' : 'opening-theme-dark'} ${variant === 'lite' ? 'opening-lite' : ''}`;
+  const openingStyle = {
+    '--opening-fadeout-ms': `${OPENING_TIMING.fadeOutMs}ms`,
+    '--opening-editor-exit-ms': `${OPENING_TIMING.full.editorExitMs}ms`
+  } as React.CSSProperties;
 
   return (
-    <div className={openingClassName}>
+    <div className={openingClassName} style={openingStyle}>
       <div className="absolute inset-0 w-full h-full">
         {variant === 'lite' ? (
           <div className="absolute inset-0 grid place-items-center">
@@ -334,7 +374,7 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
             )}
 
             <div
-              className={`absolute bottom-10 left-4 md:left-10 md:bottom-16 w-[90%] md:w-[500px] border rounded-lg overflow-hidden transition-[transform,opacity] duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] opening-editor ${editorExiting ? 'translate-y-[150%] opacity-0' : ''}`}
+              className={`absolute bottom-10 left-4 md:left-10 md:bottom-16 w-[90%] md:w-[500px] border rounded-lg overflow-hidden opening-editor ${editorExiting ? 'translate-y-[150%] opacity-0' : ''}`}
             >
               <div className="p-2 px-4 flex items-center justify-between border-b opening-editor__header">
                 <div className="flex gap-1.5 opacity-60">

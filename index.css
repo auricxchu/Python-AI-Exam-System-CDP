@@ -836,9 +836,13 @@ body.splitter-dragging .splitter-horizontal {
 
 
 /* Opening screen */
+.opening-screen {
+  opacity: 1;
+  transition: opacity var(--opening-fadeout-ms, 800ms) ease;
+}
+
 .opening-screen.opening-fadeout {
   opacity: 0;
-  transition: opacity 0.8s ease;
 }
 
 .opening-screen .perspective-grid {
@@ -943,6 +947,9 @@ body.splitter-dragging .splitter-horizontal {
 
 .opening-editor {
   will-change: transform, opacity;
+  transition:
+    transform var(--opening-editor-exit-ms, 1000ms) cubic-bezier(0.16, 1, 0.3, 1),
+    opacity var(--opening-editor-exit-ms, 1000ms) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .opening-editor__lines,
@@ -998,7 +1005,9 @@ body.splitter-dragging .splitter-horizontal {
   opacity: 0.3;
 }
 .opening-screen .opening-logo-wrap {
-  transition: opacity 0.8s ease, transform 0.8s ease;
+  transition:
+    opacity var(--opening-editor-exit-ms, 1000ms) ease,
+    transform var(--opening-editor-exit-ms, 1000ms) ease;
 }
 
 .opening-screen .opening-logo-wrap.is-exiting {
