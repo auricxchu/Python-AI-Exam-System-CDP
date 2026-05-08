@@ -1,7 +1,7 @@
 ﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen, ShieldAlert, MessageSquare
+  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, ZoomIn, Command, Info, Sun, Moon, ShieldAlert, MessageSquare
 } from 'lucide-react';
 import { ExamConfig, Question, GradingResult, UserProfile, ExamReport, ExamReviewSummary } from '../types';
 import { Button } from './ui';
@@ -104,21 +104,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [offlineLocked, setOfflineLocked] = useState(false);
 
   // Input Method & Keyboard State
-  const [capsLock, setCapsLock] = useState(false);
-  const [imeActive, setImeActive] = useState(false);
-  const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null>(null);
-  const [imePosition, setImePosition] = useState(() => {
-    const saved = localStorage.getItem('ime_float_position');
-    if (saved) {
-      try {
-        return JSON.parse(saved) as { x: number; y: number };
-      } catch {}
-    }
-    return { x: Math.max(16, window.innerWidth - 220), y: Math.max(16, window.innerHeight - 68) };
-  });
-  const imeFloatRef = useRef<HTMLDivElement | null>(null);
-  const imeDragOffsetRef = useRef({ x: 0, y: 0 });
-
   // Image Loading State (per question)
   const [imageError, setImageError] = useState(false);
   const [resultImageErrors, setResultImageErrors] = useState<Record<string, boolean>>({});
@@ -135,10 +120,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolvedPreviewImage = useResolvedImageUrl(previewImage);
   const resolvedCurrentImage = useResolvedImageUrl(currentQ.imageUrl);
   const cacheBustToken = useMemo(() => Date.now().toString(), []);
-  const imeName = (imeStatus?.name || '').trim();
-  const imeOpen = imeStatus ? imeStatus.open : imeActive;
-  const imePrimary = imeStatus ? (imeOpen ? '中' : '英') : '';
-
   // Reset image error state when question or resolved image changes
   useEffect(() => {
     setImageError(false);
@@ -149,25 +130,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     setInputPendingKey(null);
     setInputValue("");
   }, [currentKey]);
-
-  useEffect(() => {
-    localStorage.setItem('ime_float_position', JSON.stringify(imePosition));
-  }, [imePosition]);
-
-  useEffect(() => {
-    const clampPosition = () => {
-      const rect = imeFloatRef.current?.getBoundingClientRect();
-      const width = rect?.width || 220;
-      const height = rect?.height || 44;
-      setImePosition((prev) => ({
-        x: Math.min(Math.max(8, prev.x), Math.max(8, window.innerWidth - width - 8)),
-        y: Math.min(Math.max(8, prev.y), Math.max(8, window.innerHeight - height - 8))
-      }));
-    };
-    clampPosition();
-    window.addEventListener('resize', clampPosition);
-    return () => window.removeEventListener('resize', clampPosition);
-  }, []);
 
   useEffect(() => {
     if (!dragging) return;
@@ -318,25 +280,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             return;
         }
 
-        // CapsLock Listener
-        if (e.getModifierState("CapsLock") !== capsLock) {
-            setCapsLock(e.getModifierState("CapsLock"));
-        }
     };
-
-    const handleMouseDown = (e: MouseEvent) => {
-       if (e.getModifierState("CapsLock") !== capsLock) {
-        setCapsLock(e.getModifierState("CapsLock"));
-      }
-    };
-
-    const handleCompositionStart = () => setImeActive(true);
-    const handleCompositionEnd = () => setImeActive(false);
 
     window.addEventListener('keydown', handleGlobalKeyDown);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('compositionstart', handleCompositionStart);
-    window.addEventListener('compositionend', handleCompositionEnd);
 
     // Clock Interval
     const clockInterval = setInterval(() => {
@@ -374,95 +320,12 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
     return () => {
         window.removeEventListener('keydown', handleGlobalKeyDown);
-        window.removeEventListener('mousedown', handleMouseDown);
-        window.removeEventListener('compositionstart', handleCompositionStart);
-        window.removeEventListener('compositionend', handleCompositionEnd);
         clearInterval(clockInterval);
         clearInterval(offlineCheckInterval);
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, [capsLock, isRunning, pyodideReady, currentIdx, answers, examFinished]); // Deps for handleRun closure
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!imeFloatRef.current) return;
-      const rect = imeFloatRef.current.getBoundingClientRect();
-      const nextX = event.clientX - imeDragOffsetRef.current.x;
-      const nextY = event.clientY - imeDragOffsetRef.current.y;
-      setImePosition({
-        x: Math.min(Math.max(8, nextX), Math.max(8, window.innerWidth - rect.width - 8)),
-        y: Math.min(Math.max(8, nextY), Math.max(8, window.innerHeight - rect.height - 8))
-      });
-    };
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.classList.remove('ime-dragging');
-    };
-    const handleDragStart = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target?.closest('.ime-pill__drag')) return;
-      if (!imeFloatRef.current) return;
-      const rect = imeFloatRef.current.getBoundingClientRect();
-      imeDragOffsetRef.current = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top
-      };
-      document.body.classList.add('ime-dragging');
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      event.preventDefault();
-    };
-    window.addEventListener('mousedown', handleDragStart);
-    return () => {
-      window.removeEventListener('mousedown', handleDragStart);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.classList.remove('ime-dragging');
-    };
-  }, []);
-
-  useEffect(() => {
-    const electronRequire = (window as any).electronRequire || (window as any).require;
-    if (!electronRequire) return;
-    const { ipcRenderer } = electronRequire('electron');
-
-    let pollTimer: number | undefined;
-
-    const applyStatus = (payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
-      setImeStatus(payload);
-    };
-
-    const fetchStatus = () => {
-      return ipcRenderer.invoke('ime-status-get').then((payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null) => {
-        if (payload) applyStatus(payload);
-      }).catch(() => {});
-    };
-
-    fetchStatus();
-
-    const schedulePoll = () => {
-      pollTimer = window.setTimeout(() => {
-        fetchStatus();
-        schedulePoll();
-      }, 600);
-    };
-    schedulePoll();
-
-    const handler = (_event: any, payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
-      applyStatus(payload);
-      // Reset poll timer on push to avoid racing with IPC
-      if (pollTimer) window.clearTimeout(pollTimer);
-      schedulePoll();
-    };
-    ipcRenderer.on('ime-status', handler);
-
-    return () => {
-      ipcRenderer.removeListener('ime-status', handler);
-      if (pollTimer) window.clearTimeout(pollTimer);
-    };
-  }, []);
+  }, [isRunning, pyodideReady, currentIdx, answers, examFinished]); // Deps for handleRun closure
 
   useEffect(() => {
     const electronRequire = (window as any).electronRequire || (window as any).require;
@@ -1742,34 +1605,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             </div>
          </div>
       </div>
-
-      {imeStatus && (
-        <div
-          ref={imeFloatRef}
-          className="ime-float"
-          style={{ left: imePosition.x, top: imePosition.y }}
-          title={imeName || '输入法状态'}
-        >
-          <div className="ime-pill">
-            <span className="ime-pill__drag" aria-hidden="true">
-              <span className="ime-pill__drag-dots">
-                <span />
-                <span />
-                <span />
-              </span>
-            </span>
-            <span className="ime-pill__divider" />
-            <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
-              <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
-                {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
-              </span>
-              <span>CAPS</span>
-            </span>
-            <span className="ime-pill__divider" />
-            <span className="ime-pill__cell">{imePrimary || '--'}</span>
-          </div>
-        </div>
-      )}
 
       {/* Offline Lock Overlay */}
       {offlineLocked && !examFinished && (

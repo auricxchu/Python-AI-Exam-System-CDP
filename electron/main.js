@@ -1,5 +1,5 @@
 
-const { app, BrowserWindow, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -60,8 +60,9 @@ const applyExamWindowPolicy = (win) => {
   win.setClosable(false);
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setFullScreen(true);
-  win.setKiosk(true);
+  // Maximize borderless instead of fullscreen — taskbar with IME toolbar stays visible
+  win.setBounds(screen.getPrimaryDisplay().workArea);
+  win.center();
   refocusSecureWindow(win);
 };
 
@@ -69,7 +70,6 @@ const clearExamWindowPolicy = (win) => {
   if (!win || win.isDestroyed()) return;
   secureExamMode = false;
   secureExamRefocusPending = false;
-  win.setKiosk(false);
   win.setAlwaysOnTop(false);
   win.setVisibleOnAllWorkspaces(false);
   win.setClosable(true);
@@ -78,7 +78,9 @@ const clearExamWindowPolicy = (win) => {
   win.setMinimizable(true);
   win.setMenuBarVisibility(false);
   win.setAutoHideMenuBar(true);
-  win.setFullScreen(true);
+  // Restore borderless maximized state
+  win.setBounds(screen.getPrimaryDisplay().workArea);
+  win.center();
 };
 
 const shouldBlockExamShortcut = (input) => {
@@ -223,16 +225,22 @@ function createWindow() {
   const windowIcon = app.isPackaged
     ? path.join(process.resourcesPath, 'external-sources', 'app_icon.ico')
     : path.join(__dirname, '../build/app_icon.ico');
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { x, y, width, height } = primaryDisplay.workArea;
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    fullscreen: true, // Open in fullscreen
-    autoHideMenuBar: true, // Hide the menu bar
+    x,
+    y,
+    width,
+    height,
+    frame: false,          // Borderless — taskbar stays visible
+    autoHideMenuBar: true,
     icon: windowIcon,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // For simple compatibility
-      webSecurity: false // Allow loading local resources if needed
+      contextIsolation: false,
+      webSecurity: false
     }
   });
 
@@ -247,12 +255,6 @@ function createWindow() {
     if (!secureExamMode) return;
     notifyExamSecurityWarning('检测到切出考试窗口的尝试，系统已重新拉回考试界面。');
     refocusSecureWindow(win);
-  });
-
-  win.on('leave-full-screen', () => {
-    if (!secureExamMode) return;
-    notifyExamSecurityWarning('检测到退出全屏的尝试，系统已恢复考试锁定模式。');
-    applyExamWindowPolicy(win);
   });
 
   win.webContents.on('before-input-event', (event, input) => {
