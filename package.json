@@ -10,8 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "dist": "tsc && vite build && electron-builder",
-    "postinstall": "node scripts/patch-electron-rebuild.js && node scripts/copy-monaco.mjs && node scripts/copy-pyodide.mjs",
-    "build:ime": "powershell -ExecutionPolicy Bypass -File scripts/build-ime-helper.ps1"
+    "postinstall": "node scripts/patch-electron-rebuild.js && node scripts/copy-monaco.mjs && node scripts/copy-pyodide.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
@@ -59,10 +58,6 @@
         "from": "build/uninstall_icon.ico",
         "to": "external-sources/uninstall_icon.ico"
       },
-      {
-        "from": "electron/ime-helper/ime-helper.exe",
-        "to": "ime-helper/ime-helper.exe"
-      }
     ],
     "directories": {
       "output": "release"

@@ -4,12 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
-const readline = require('readline');
-
-const isWindows = process.platform === 'win32';
 const imageCacheDir = path.join(app.getPath('userData'), 'image-cache');
-let lastImeStatus = null;
 let secureExamMode = false;
 let secureExamRefocusPending = false;
 
@@ -176,51 +171,6 @@ const getMimeType = (fileName) => {
   return 'application/octet-stream';
 };
 
-const startImeHelper = () => {
-  if (!isWindows) return;
-
-  const helperEnvPath = process.env.IME_HELPER_PATH;
-  const helperPath = helperEnvPath
-    ? helperEnvPath
-    : app.isPackaged
-      ? path.join(process.resourcesPath, 'ime-helper', 'ime-helper.exe')
-      : path.join(__dirname, 'ime-helper', 'ime-helper.exe');
-
-  if (!fs.existsSync(helperPath)) {
-    console.warn(`IME helper not found at ${helperPath}`);
-    return;
-  }
-
-  let child;
-  try {
-    child = spawn(helperPath, [], { stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e) {
-    console.warn('Failed to spawn IME helper', e);
-    return;
-  }
-  const rl = readline.createInterface({ input: child.stdout });
-
-  rl.on('line', (line) => {
-    try {
-      const payload = JSON.parse(line);
-      lastImeStatus = payload;
-      BrowserWindow.getAllWindows().forEach((w) => {
-        w.webContents.send('ime-status', payload);
-      });
-    } catch (e) {
-      console.warn('IME helper output parse failed', e);
-    }
-  });
-
-  child.stderr.on('data', (data) => {
-    console.warn(`IME helper error: ${data.toString()}`);
-  });
-
-  child.on('exit', (code) => {
-    console.warn(`IME helper exited with code ${code}`);
-  });
-};
-
 function createWindow() {
   const windowIcon = app.isPackaged
     ? path.join(process.resourcesPath, 'external-sources', 'app_icon.ico')
@@ -328,10 +278,6 @@ app.whenReady().then(() => {
     return `appimg://${encodeURIComponent(filename)}`;
   });
 
-  ipcMain.handle('ime-status-get', async () => {
-    return lastImeStatus;
-  });
-
   ipcMain.handle('export-report-to-desktop', async (_event, payload) => {
     try {
       const filename = sanitizeFileName(payload?.filename);
@@ -362,7 +308,6 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  startImeHelper();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

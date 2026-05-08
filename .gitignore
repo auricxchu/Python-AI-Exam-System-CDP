@@ -15,9 +15,6 @@ dist-ssr
 release/
 public/monaco/
 public/pyodide/
-electron/ime-helper/bin/
-electron/ime-helper/obj/
-electron/ime-helper/ime-helper.exe
 supabase/.temp/
 
 # Editor directories and files
