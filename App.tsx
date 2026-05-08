@@ -14,6 +14,7 @@ import Modal from './components/Modal';
 import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
 import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
+import { SUPABASE_URL } from './services/supabaseClient';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
@@ -375,7 +376,15 @@ const requestEnterMode = (nextMode: AppMode) => {
       REMOTE_RUNTIME_ASSET_URLS.map((url) => probe(url, { method: 'HEAD', mode: 'no-cors' }))
     );
 
-    return remoteChecks.every(Boolean);
+    if (!remoteChecks.every(Boolean)) return false;
+
+    // Check Supabase backend reachability if configured
+    if (SUPABASE_URL) {
+      const supabaseOk = await probe(SUPABASE_URL, { method: 'HEAD', mode: 'no-cors' });
+      if (!supabaseOk) return false;
+    }
+
+    return true;
   };
 
   const verifyLocalIntegrity = async () => {
