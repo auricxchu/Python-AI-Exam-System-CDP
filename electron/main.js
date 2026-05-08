@@ -185,6 +185,7 @@ function createWindow() {
     width,
     height,
     frame: false,          // Borderless — taskbar stays visible
+    resizable: false,      // Prevent window resize by edge dragging
     autoHideMenuBar: true,
     icon: windowIcon,
     webPreferences: {
