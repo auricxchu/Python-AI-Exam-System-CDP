@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## Unreleased — Cross-platform & Bugfix Sprint (Claude Code)
+
+*Contributed by Claude Code (Deepseek-v4-pro)*
+
+- **Cross-platform support**: remove Windows-only IME helper entirely; switch from fullscreen to borderless maximized window so the native OS taskbar (and its IME toolbar) stays visible during exams. macOS and Linux can now build and package without Windows dependencies.
+- **Add macOS app icon**: generate `app_icon.icns` from PNG source and wire it into the electron-builder macOS config.
+- **Fix multi-line print output**: Pyodide 0.25 `write` handler was missing the required `return buffer.length`, causing stdout to be silently dropped. Switched to `write` API with streaming `TextDecoder` — all `print()` output now displays correctly.
+- **Fix opening animation bugs**: fallback timeout now correctly writes `OPENING_SEEN_KEY` so the lite splash plays on subsequent launches; lite fade-out wait increased to match CSS transition duration; editor code span given `minHeight` to prevent layout jumps during typing animation.
+- **Responsive layout for small screens**: landing page, score report, and teacher dashboard now use Tailwind responsive breakpoints (`sm:`/`md:`) to scale down font sizes and spacing on 1366×768 and similar displays. Score report and teacher dashboard panels switched to `overflow-y-auto` for scrollable content.
+- **Remove custom IME floating pill**: the in-app IME status indicator was unreliable across different IME types and had state synchronisation issues. Deleted entirely (~130 lines of state, polling, drag, and rendering). Users now rely on the native OS IME toolbar visible in the taskbar.
+- **Offline exam security**: extended network connectivity check to include Supabase backend reachability; restored online-required gate in the student login flow; added 60-second offline detection that locks the exam UI with a fullscreen overlay to prevent question leakage when the network drops.
+- **Exam runtime asset loading**: support local Pyodide and Monaco assets as priority sources, falling back to CDN only when local files are unavailable.
+- **Feedback system**: students can submit technical/grading/other feedback from the score report page.
+- **Exam kiosk security**: add `before-input-event` shortcut blocking (Alt+Tab, Win key, Alt+F4, Ctrl+R, etc.), minimisation prevention, focus-loss recovery, and DevTools blocking during exams.
+
+---
+
+## Previous Releases
+
+### Teacher UX & Manual Paper Assembly
 
 - Move AI provider configuration into the teacher dashboard and add a Supabase-backed cloud proxy flow for provider settings and review requests.
 - Add teacher-admin onboarding: force a password change after default-password login, guide the teacher through AI key setup, and show a short usage guide.
@@ -20,6 +39,8 @@
 - Normalize exam config persistence for the new manual-paper structure across local storage, cloud sync, and student-side paper generation.
 - Refine manual-paper UX with compact left-side cards, icon-based add/remove/reorder actions, theme-aware hover states, and landing-card watermark polish in light mode.
 - Unify teacher-side paper summary layout, trim manual-paper visual noise, wire in dedicated app/setup/uninstall icons, and regenerate Windows multi-size ICO assets.
+
+### IME, Editor & Stability
 
 - Refine the API settings modal into a simpler desktop-style layout with unified scrollbar styling.
 - Add lite opening screen flow and keep the full opening animation for first launch.
@@ -48,8 +69,3 @@
 - Expand AI provider support (OpenAI/Qwen/Moonshot) and rename service to `aiService`.
 - Improve exam report details (start/end time, actual grading model) and layout.
 - Refine light theme background and hover contrast.
-
-## Known Issues
-
-- Wubi IME profile is not detected; UI falls back to Pinyin/ENG only.
-- TSF profile reporting can return default (all-zero) profile GUIDs on some systems.
