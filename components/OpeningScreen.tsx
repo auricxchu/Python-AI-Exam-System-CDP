@@ -187,7 +187,7 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
     };
   }, [theme, onLineChange, onStepChange, onEditorExit, onReady, onFadeOut, onPrelude, onPreludeText, onComplete]);
 
-  return <span ref={codeRef} />;
+  return <span ref={codeRef} style={{ minHeight: '200px', display: 'inline-block' }} />;
 });
 
 interface OpeningScreenProps {
@@ -272,7 +272,7 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
       await sleep(5000);
       if (!alive) return;
       setFadeOut(true);
-      await sleep(260);
+      await sleep(900);
       if (!alive) return;
       handleComplete();
     };

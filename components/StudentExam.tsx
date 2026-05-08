@@ -88,7 +88,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolveInputRef = useRef<((value: string) => void) | null>(null);
   const runNonceRef = useRef<Record<string, number>>({});
   const outputShadowRef = useRef<Record<string, string>>({});
-  const stdoutShadowRef = useRef<Record<string, string>>({});
   const mainSplitRef = useRef<HTMLDivElement | null>(null);
   const editorSplitRef = useRef<HTMLDivElement | null>(null);
   const scoreAnimationFrameRef = useRef<number | null>(null);
@@ -101,12 +100,13 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   // Environment State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [systemTime, setSystemTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour12: false }));
-  
+  const offlineSinceRef = useRef<number | null>(null);
+  const [offlineLocked, setOfflineLocked] = useState(false);
+
   // Input Method & Keyboard State
   const [capsLock, setCapsLock] = useState(false);
   const [imeActive, setImeActive] = useState(false);
   const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null>(null);
-  const [imeShiftOpen, setImeShiftOpen] = useState<boolean | null>(null);
   const [imePosition, setImePosition] = useState(() => {
     const saved = localStorage.getItem('ime_float_position');
     if (saved) {
@@ -116,10 +116,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
     return { x: Math.max(16, window.innerWidth - 220), y: Math.max(16, window.innerHeight - 68) };
   });
-  const shiftTapRef = useRef<{ downAt: number; used: boolean }>({ downAt: 0, used: false });
-  const imeLastKlidRef = useRef('');
-  const imeManualOverrideRef = useRef(false);
-  const lastChineseOpenRef = useRef<boolean | null>(null);
   const imeFloatRef = useRef<HTMLDivElement | null>(null);
   const imeDragOffsetRef = useRef({ x: 0, y: 0 });
 
@@ -140,35 +136,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolvedCurrentImage = useResolvedImageUrl(currentQ.imageUrl);
   const cacheBustToken = useMemo(() => Date.now().toString(), []);
   const imeName = (imeStatus?.name || '').trim();
-  const imeNameLower = imeName.toLowerCase();
-  const hasImeName = imeName.length > 0;
-  const klid = (imeStatus?.klid || '').toUpperCase();
-  const isKlidChinese = klid.endsWith('0804');
-  const isKlidEnglish = klid.endsWith('0409');
-  const isEnglishKeyboard = hasImeName && (
-    imeNameLower.includes('english') ||
-    imeNameLower.includes('eng') ||
-    imeNameLower.includes('us') ||
-    imeNameLower.includes('keyboard')
-  );
-  const isChineseIme = klid
-    ? isKlidChinese
-    : (hasImeName ? (
-        !isEnglishKeyboard && (
-          imeNameLower.includes('pinyin') ||
-          imeNameLower.includes('wubi') ||
-          imeNameLower.includes('ime')
-        )
-      ) : true);
-  const imeOpen = isChineseIme ? (imeShiftOpen ?? (imeStatus ? imeStatus.open : imeActive)) : false;
-  const variant = (imeStatus?.variant || '').toLowerCase();
-  const isWubi =
-    variant === 'wubi' ||
-    imeNameLower.includes('wubi') ||
-    klid.startsWith('E0020804') ||
-    klid.startsWith('E0050804');
-  const imeSecondary = isChineseIme ? (isWubi ? '五笔' : '拼') : '';
-  const imePrimary = isChineseIme ? (imeOpen ? '中' : '英') : 'ENG';
+  const imeOpen = imeStatus ? imeStatus.open : imeActive;
+  const imePrimary = imeStatus ? (imeOpen ? '中' : '英') : '';
 
   // Reset image error state when question or resolved image changes
   useEffect(() => {
@@ -289,7 +258,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     // Clear previous output first
     setOutputs(prev => ({ ...prev, [runKey]: "" }));
     outputShadowRef.current[runKey] = "";
-    stdoutShadowRef.current[runKey] = "";
 
     const timeoutId = window.setTimeout(() => {
         if (runNonceRef.current[runKey] !== runNonce) return;
@@ -308,23 +276,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             (currentOutput) => {
                 if (runNonceRef.current[runKey] != runNonce) return;
                 if (!currentOutput) return;
-                const prevStdout = stdoutShadowRef.current[runKey] || "";
-                let delta = currentOutput;
-                if (currentOutput.startsWith(prevStdout)) {
-                    delta = currentOutput.slice(prevStdout.length);
-                } else {
-                    let overlap = 0;
-                    const maxOverlap = Math.min(prevStdout.length, currentOutput.length);
-                    for (let i = 1; i <= maxOverlap; i++) {
-                        if (prevStdout.slice(-i) === currentOutput.slice(0, i)) {
-                            overlap = i;
-                        }
-                    }
-                    delta = currentOutput.slice(overlap);
-                }
-                stdoutShadowRef.current[runKey] = currentOutput;
-                if (!delta) return;
-                const display = (outputShadowRef.current[runKey] || "") + delta;
+                const display = (outputShadowRef.current[runKey] || "") + currentOutput;
                 outputShadowRef.current[runKey] = display;
                 setOutputs(prev => ({ ...prev, [runKey]: display }));
                 if (currentOutput.includes('OSError: [Errno 29]') || currentOutput.includes('I/O error')) {
@@ -370,26 +322,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         if (e.getModifierState("CapsLock") !== capsLock) {
             setCapsLock(e.getModifierState("CapsLock"));
         }
-
-        if (e.key === 'Shift') {
-            shiftTapRef.current = { downAt: Date.now(), used: false };
-        } else if (shiftTapRef.current.downAt) {
-            shiftTapRef.current.used = true;
-        }
-    };
-
-    const handleGlobalKeyUp = (e: KeyboardEvent) => {
-        if (e.key !== 'Shift') return;
-        const { downAt, used } = shiftTapRef.current;
-        shiftTapRef.current = { downAt: 0, used: false };
-        if (!used && Date.now() - downAt < 450) {
-            imeManualOverrideRef.current = true;
-            setImeShiftOpen(prev => {
-              const next = !(prev ?? (lastChineseOpenRef.current ?? false));
-              lastChineseOpenRef.current = next;
-              return next;
-            });
-        }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -402,7 +334,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const handleCompositionEnd = () => setImeActive(false);
 
     window.addEventListener('keydown', handleGlobalKeyDown);
-    window.addEventListener('keyup', handleGlobalKeyUp);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('compositionstart', handleCompositionStart);
     window.addEventListener('compositionend', handleCompositionEnd);
@@ -413,22 +344,45 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }, 1000);
 
     // Network Listeners
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      offlineSinceRef.current = null;
+      setOfflineLocked(false);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      if (!offlineSinceRef.current) {
+        offlineSinceRef.current = Date.now();
+      }
+    };
+    // If already offline on mount, start the offline timer immediately
+    if (!navigator.onLine && !offlineSinceRef.current) {
+      offlineSinceRef.current = Date.now();
+    }
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Periodic offline check: lock exam after 60s without network
+    const offlineCheckInterval = window.setInterval(() => {
+      if (!navigator.onLine && offlineSinceRef.current && !examFinished) {
+        const elapsed = Date.now() - offlineSinceRef.current;
+        if (elapsed > 60000) {
+          setOfflineLocked(true);
+        }
+      }
+    }, 5000);
+
     return () => {
         window.removeEventListener('keydown', handleGlobalKeyDown);
-        window.removeEventListener('keyup', handleGlobalKeyUp);
         window.removeEventListener('mousedown', handleMouseDown);
         window.removeEventListener('compositionstart', handleCompositionStart);
         window.removeEventListener('compositionend', handleCompositionEnd);
         clearInterval(clockInterval);
+        clearInterval(offlineCheckInterval);
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, [capsLock, isRunning, pyodideReady, currentIdx, answers]); // Deps for handleRun closure
+  }, [capsLock, isRunning, pyodideReady, currentIdx, answers, examFinished]); // Deps for handleRun closure
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -473,50 +427,40 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const electronRequire = (window as any).electronRequire || (window as any).require;
     if (!electronRequire) return;
     const { ipcRenderer } = electronRequire('electron');
+
+    let pollTimer: number | undefined;
+
     const applyStatus = (payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
       setImeStatus(payload);
-      setImeShiftOpen((prev) => {
-        const now = Date.now();
-        const nextKlid = (payload.klid || '').toUpperCase();
-        const prevKlid = imeLastKlidRef.current;
-        if (nextKlid && nextKlid !== prevKlid) {
-          imeLastKlidRef.current = nextKlid;
-          if (nextKlid.endsWith('0409')) {
-            imeManualOverrideRef.current = false;
-            return false;
-          }
-          if (nextKlid.endsWith('0804')) {
-            if (lastChineseOpenRef.current === null) {
-              lastChineseOpenRef.current = payload.open;
-              imeManualOverrideRef.current = false;
-              return payload.open;
-            }
-            imeManualOverrideRef.current = true;
-            return lastChineseOpenRef.current;
-          }
-          return payload.open;
-        }
-        if (imeManualOverrideRef.current && isChineseIme) return prev;
-        if (isChineseIme) {
-          lastChineseOpenRef.current = payload.open;
-        }
-        return payload.open;
-      });
     };
+
     const fetchStatus = () => {
       return ipcRenderer.invoke('ime-status-get').then((payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null) => {
         if (payload) applyStatus(payload);
       }).catch(() => {});
     };
+
     fetchStatus();
+
+    const schedulePoll = () => {
+      pollTimer = window.setTimeout(() => {
+        fetchStatus();
+        schedulePoll();
+      }, 600);
+    };
+    schedulePoll();
+
     const handler = (_event: any, payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
       applyStatus(payload);
+      // Reset poll timer on push to avoid racing with IPC
+      if (pollTimer) window.clearTimeout(pollTimer);
+      schedulePoll();
     };
     ipcRenderer.on('ime-status', handler);
-    const poll = window.setInterval(fetchStatus, 600);
+
     return () => {
       ipcRenderer.removeListener('ime-status', handler);
-      window.clearInterval(poll);
+      if (pollTimer) window.clearTimeout(pollTimer);
     };
   }, []);
 
@@ -1016,8 +960,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   if (examFinished) {
     const isLightTheme = theme === 'light';
     const pageClass = isLightTheme
-      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-hidden'
-      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-hidden';
+      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-4 sm:p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-y-auto'
+      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-4 sm:p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-y-auto';
     const shellClass = 'max-w-[1780px] w-full relative z-10 animate-in fade-in zoom-in-95 duration-500';
     const asideClass = 'w-full max-w-[430px]';
     const asideCardClass = isLightTheme
@@ -1210,16 +1154,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         />
 
         <div className={shellClass}>
-          <div className="grid gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
+          <div className="grid gap-4 sm:gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
             <div className={`${asideClass} flex flex-col`}>
               <div className={asideCardClass}>
                 <div className="text-center">
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
-                  <h2 className={`text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
+                  <h2 className={`text-xl sm:text-2xl md:text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
                   <p className={textMutedClass}>考试信息与最终得分</p>
-                  <div className="text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
+                  <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
                 </div>
 
                 <div className="report-info-grid">
@@ -1799,32 +1743,46 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
          </div>
       </div>
 
-      <div
-        ref={imeFloatRef}
-        className="ime-float"
-        style={{ left: imePosition.x, top: imePosition.y }}
-        title={imeName || (isChineseIme ? '中文输入法' : '英文键盘')}
-      >
-        <div className={`ime-pill ${isChineseIme ? '' : 'ime-pill--eng'}`}>
-          <span className="ime-pill__drag" aria-hidden="true">
-            <span className="ime-pill__drag-dots">
-              <span />
-              <span />
-              <span />
+      {imeStatus && (
+        <div
+          ref={imeFloatRef}
+          className="ime-float"
+          style={{ left: imePosition.x, top: imePosition.y }}
+          title={imeName || '输入法状态'}
+        >
+          <div className="ime-pill">
+            <span className="ime-pill__drag" aria-hidden="true">
+              <span className="ime-pill__drag-dots">
+                <span />
+                <span />
+                <span />
+              </span>
             </span>
-          </span>
-          <span className="ime-pill__divider" />
-          <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
-            <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
-              {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
+            <span className="ime-pill__divider" />
+            <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
+              <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
+                {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
+              </span>
+              <span>CAPS</span>
             </span>
-            <span>CAPS</span>
-          </span>
-          <span className="ime-pill__divider" />
-          <span className="ime-pill__cell">{imePrimary}</span>
-          {imeSecondary && <span className="ime-pill__cell">{imeSecondary}</span>}
+            <span className="ime-pill__divider" />
+            <span className="ime-pill__cell">{imePrimary || '--'}</span>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Offline Lock Overlay */}
+      {offlineLocked && !examFinished && (
+        <div className="absolute inset-0 z-[100] bg-slate-950/95 flex flex-col items-center justify-center gap-6 backdrop-blur-sm">
+          <WifiOff className="w-16 h-16 text-red-400" />
+          <h2 className="text-2xl font-bold text-white">网络连接已断开</h2>
+          <p className="text-slate-400 text-sm max-w-md text-center leading-relaxed">
+            系统检测到网络连接已中断超过 60 秒。<br />
+            为防止题目泄露，考试已暂停。<br />
+            请等待监考老师协助恢复网络后继续答题。
+          </p>
+        </div>
+      )}
     </div>
   );
 };
