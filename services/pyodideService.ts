@@ -71,8 +71,8 @@ async function init(sab, dataSab, indexURL) {
     const payload = isError ? "Error: " + normalizeOutput(text) : normalizeOutput(text);
     postMessage({ type: 'output', text: payload, sessionId: currentSessionId });
   };
-  pyodide.setStdout({ raw: (text) => emitOutput(text), isatty: true });
-  pyodide.setStderr({ raw: (text) => emitOutput(text, true), isatty: true });
+  pyodide.setStdout({ batched: (text) => emitOutput(text) });
+  pyodide.setStderr({ batched: (text) => emitOutput(text, true) });
 
   // Setup blocking input mechanism using Atomics
   pyodide.setStdin({
@@ -418,8 +418,8 @@ export const runPythonCodeLocal = async (
 
     // Configure streams for this run
     // Use write to show prompt text immediately (no newline buffering)
-    mainPyodide.setStdout({ raw: (text: any) => onOutput(normalizeOutput(text)), isatty: true });
-    mainPyodide.setStderr({ raw: (text: any) => onOutput("Error: " + normalizeOutput(text)), isatty: true });
+    mainPyodide.setStdout({ batched: (text: any) => onOutput(normalizeOutput(text)) });
+    mainPyodide.setStderr({ batched: (text: any) => onOutput("Error: " + normalizeOutput(text)) });
     
     // Fallback: Use window.prompt because main thread cannot block asynchronously without prompt()
     mainPyodide.setStdin({

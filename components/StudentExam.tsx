@@ -276,9 +276,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             (currentOutput) => {
                 if (runNonceRef.current[runKey] != runNonce) return;
                 if (!currentOutput) return;
-                const display = (outputShadowRef.current[runKey] || "") + currentOutput;
-                outputShadowRef.current[runKey] = display;
-                setOutputs(prev => ({ ...prev, [runKey]: display }));
+                outputShadowRef.current[runKey] = currentOutput;
+                setOutputs(prev => ({ ...prev, [runKey]: currentOutput }));
                 if (currentOutput.includes('OSError: [Errno 29]') || currentOutput.includes('I/O error')) {
                     abortPyodideRun(runKey);
                     resetPyodideWorker();
