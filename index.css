@@ -906,43 +906,22 @@ body.splitter-dragging .splitter-horizontal {
   transform: translateY(0);
 }
 
-/* Short screen (≤800px height): shrink landing page to fit without scrolling */
-@media (max-height: 800px) {
-  .landing-content {
-    padding-top: 1rem !important;
-    padding-bottom: 1rem !important;
-  }
-  .landing-shell {
-    padding-top: 1rem !important;
-  }
-  .landing-shell h1 {
-    font-size: 1.5rem !important;
-    margin-bottom: 0.25rem !important;
-  }
-  .landing-shell h1 + p {
-    font-size: 0.75rem !important;
-    margin-bottom: 1rem !important;
-  }
-  .landing-shell .model-picker {
-    margin-bottom: 0.75rem !important;
-  }
-  .landing-shell .grid {
-    gap: 0.75rem !important;
-    margin-bottom: 1rem !important;
-  }
-  .landing-shell .grid button {
-    padding: 1rem !important;
-  }
-  .landing-shell .grid button h2 {
-    font-size: 1.125rem !important;
-  }
-  .landing-shell .grid button p {
-    font-size: 0.7rem !important;
-    margin-bottom: 0.75rem !important;
-  }
-  .landing-exit {
-    margin-top: 0.25rem !important;
-  }
+/* Short screen: proportionally scale landing content to fit without scrolling */
+.landing-content {
+  --landing-scale: 1;
+  transform: scale(var(--landing-scale));
+  transform-origin: top center;
+}
+
+@media (max-height: 850px) {
+  .landing-shell { padding-top: 1rem !important; }
+  .landing-content { --landing-scale: 0.85; }
+}
+@media (max-height: 750px) {
+  .landing-content { --landing-scale: 0.76; }
+}
+@media (max-height: 650px) {
+  .landing-content { --landing-scale: 0.68; }
 }
 
 .opening-editor {
