@@ -10,6 +10,91 @@ const readline = require('readline');
 const isWindows = process.platform === 'win32';
 const imageCacheDir = path.join(app.getPath('userData'), 'image-cache');
 let lastImeStatus = null;
+let secureExamMode = false;
+let secureExamRefocusPending = false;
+
+const notifyExamSecurityWarning = (reason) => {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('exam-security-warning', {
+        reason,
+        occurredAt: new Date().toISOString()
+      });
+    }
+  });
+};
+
+const refocusSecureWindow = (win) => {
+  if (!secureExamMode || !win || win.isDestroyed() || secureExamRefocusPending) return;
+  secureExamRefocusPending = true;
+
+  setTimeout(() => {
+    try {
+      if (win.isMinimized()) {
+        win.restore();
+      }
+      if (!win.isVisible()) {
+        win.show();
+      }
+      if (!win.isFocused()) {
+        win.focus();
+      }
+      win.moveTop();
+    } finally {
+      secureExamRefocusPending = false;
+    }
+  }, 80);
+};
+
+const applyExamWindowPolicy = (win) => {
+  if (!win || win.isDestroyed()) return;
+  secureExamMode = true;
+  win.setAutoHideMenuBar(false);
+  win.setMenuBarVisibility(false);
+  if (typeof win.removeMenu === 'function') {
+    win.removeMenu();
+  }
+  win.setMinimizable(false);
+  win.setMaximizable(false);
+  win.setResizable(false);
+  win.setClosable(false);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setFullScreen(true);
+  win.setKiosk(true);
+  refocusSecureWindow(win);
+};
+
+const clearExamWindowPolicy = (win) => {
+  if (!win || win.isDestroyed()) return;
+  secureExamMode = false;
+  secureExamRefocusPending = false;
+  win.setKiosk(false);
+  win.setAlwaysOnTop(false);
+  win.setVisibleOnAllWorkspaces(false);
+  win.setClosable(true);
+  win.setResizable(true);
+  win.setMaximizable(true);
+  win.setMinimizable(true);
+  win.setMenuBarVisibility(false);
+  win.setAutoHideMenuBar(true);
+  win.setFullScreen(true);
+};
+
+const shouldBlockExamShortcut = (input) => {
+  const key = String(input.key || '').toLowerCase();
+  return (
+    key === 'alt' ||
+    key === 'meta' ||
+    key === 'f11' ||
+    key === 'f5' ||
+    (key === 'r' && input.control) ||
+    (key === 'tab' && input.alt) ||
+    (key === 'f4' && input.alt) ||
+    (key === 'escape' && input.control) ||
+    input.meta
+  );
+};
 
 const sanitizeFileName = (value) => {
   const normalized = String(value || '').trim();
@@ -137,7 +222,7 @@ const startImeHelper = () => {
 function createWindow() {
   const windowIcon = app.isPackaged
     ? path.join(process.resourcesPath, 'external-sources', 'app_icon.ico')
-    : path.join(__dirname, '../external-sources/app_icon.ico');
+    : path.join(__dirname, '../build/app_icon.ico');
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -149,6 +234,39 @@ function createWindow() {
       contextIsolation: false, // For simple compatibility
       webSecurity: false // Allow loading local resources if needed
     }
+  });
+
+  win.on('minimize', (event) => {
+    if (!secureExamMode) return;
+    event.preventDefault();
+    notifyExamSecurityWarning('检测到最小化尝试，系统已阻止并恢复考试窗口。');
+    refocusSecureWindow(win);
+  });
+
+  win.on('blur', () => {
+    if (!secureExamMode) return;
+    notifyExamSecurityWarning('检测到切出考试窗口的尝试，系统已重新拉回考试界面。');
+    refocusSecureWindow(win);
+  });
+
+  win.on('leave-full-screen', () => {
+    if (!secureExamMode) return;
+    notifyExamSecurityWarning('检测到退出全屏的尝试，系统已恢复考试锁定模式。');
+    applyExamWindowPolicy(win);
+  });
+
+  win.webContents.on('before-input-event', (event, input) => {
+    if (!secureExamMode || input.type !== 'keyDown') return;
+    if (!shouldBlockExamShortcut(input)) return;
+    event.preventDefault();
+    notifyExamSecurityWarning(`检测到受限快捷键 ${input.key || ''}，系统已阻止。`);
+  });
+
+  win.webContents.on('devtools-opened', () => {
+    if (!secureExamMode) return;
+    win.webContents.closeDevTools();
+    notifyExamSecurityWarning('检测到调试工具打开尝试，系统已阻止。');
+    refocusSecureWindow(win);
   });
 
   // CRITICAL: Set headers to enable SharedArrayBuffer (COOP/COEP)
@@ -175,6 +293,10 @@ function createWindow() {
 
 // Handle exit event from renderer
 ipcMain.on('app-exit', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win && !win.isDestroyed()) {
+    clearExamWindowPolicy(win);
+  }
   app.quit();
 });
 
@@ -220,6 +342,21 @@ app.whenReady().then(() => {
       console.error('Export report to desktop failed:', error);
       return { success: false, error: error.message || '导出失败' };
     }
+  });
+
+  ipcMain.handle('exam-security-set', async (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      return { success: false };
+    }
+
+    if (enabled) {
+      applyExamWindowPolicy(win);
+    } else {
+      clearExamWindowPolicy(win);
+    }
+
+    return { success: true };
   });
 
   createWindow();

@@ -120,6 +120,21 @@ export interface ExamReport {
   answers: Record<string, string>;
 }
 
+export interface ExamFeedbackPayload {
+  category: "technical" | "grading" | "other";
+  message: string;
+  studentName: string;
+  studentId: string;
+  examTitle: string;
+  startTime: string;
+  endTime: string;
+  score: number;
+  aiProvider?: string;
+  reportUrl?: string;
+  examContext?: Record<string, unknown>;
+  clientContext?: Record<string, unknown>;
+}
+
 export interface Notification {
   message: string;
   type: "success" | "warning" | "error";

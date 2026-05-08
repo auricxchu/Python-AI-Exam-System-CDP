@@ -1,5 +1,5 @@
 
-import { Question, ExamReport, ExamConfig } from "../types";
+import { Question, ExamReport, ExamConfig, ExamFeedbackPayload } from "../types";
 import { DEFAULT_CONFIG, DEFAULT_QUESTIONS } from "../constants";
 import { supabase } from "./supabaseClient";
 import { normalizeExamConfig } from "./examConfigService";
@@ -9,6 +9,14 @@ export interface CloudResult {
   error?: string;
   url?: string;
 }
+
+const createTicketId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
 
 export const cloudService = {
   /**
@@ -200,11 +208,97 @@ export const cloudService = {
       if (dbError) throw dbError;
 
       console.log("Cloud: Upload successful. URL:", publicUrl);
-      return { success: true };
+      return { success: true, url: publicUrl };
 
     } catch (e: any) {
       console.error("Cloud upload error:", e);
       return { success: false, error: e.message || "Unknown error" };
+    }
+  },
+
+  submitExamFeedback: async (payload: ExamFeedbackPayload): Promise<CloudResult> => {
+    const backupKey = `exam_feedback_${payload.studentId}_${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    const ticketId = createTicketId();
+    const normalizedCategory = payload.category === "grading" ? "grading" : payload.category === "other" ? "other" : "technical";
+
+    try {
+      localStorage.setItem(
+        backupKey,
+        JSON.stringify({
+          ticketId,
+          createdAt,
+          ...payload
+        })
+      );
+    } catch (error) {
+      console.warn("Local feedback backup failed", error);
+    }
+
+    if (!supabase) {
+      return { success: false, error: "Supabase not configured" };
+    }
+
+    try {
+      const filePath = `${payload.studentId}/${createdAt.replace(/[:.]/g, "-")}_${normalizedCategory}_${ticketId}.json`;
+      const feedbackBlob = new Blob(
+        [
+          JSON.stringify(
+            {
+              ticketId,
+              createdAt,
+              ...payload
+            },
+            null,
+            2
+          )
+        ],
+        { type: "application/json;charset=utf-8" }
+      );
+
+      const { error: uploadError } = await supabase
+        .storage
+        .from("exam-feedbacks")
+        .upload(filePath, feedbackBlob, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: "application/json"
+        });
+
+      if (uploadError) {
+        if (uploadError.message.includes("Bucket not found")) {
+          return { success: false, error: "请先在 Supabase 创建名为 'exam-feedbacks' 的反馈存储桶" };
+        }
+        throw uploadError;
+      }
+
+      const { error: dbError } = await supabase
+        .from("exam_feedback_tickets")
+        .insert([
+          {
+            ticket_id: ticketId,
+            category: normalizedCategory,
+            message: payload.message.trim(),
+            student_id: payload.studentId,
+            student_name: payload.studentName,
+            exam_title: payload.examTitle,
+            exam_started_at: payload.startTime,
+            exam_finished_at: payload.endTime,
+            score: payload.score,
+            ai_provider: payload.aiProvider || null,
+            report_url: payload.reportUrl || null,
+            storage_path: filePath,
+            exam_context: payload.examContext || {},
+            client_context: payload.clientContext || {}
+          }
+        ]);
+
+      if (dbError) throw dbError;
+
+      return { success: true, url: filePath };
+    } catch (error: any) {
+      console.error("Feedback submit error:", error);
+      return { success: false, error: error?.message || "Unknown error" };
     }
   }
 };

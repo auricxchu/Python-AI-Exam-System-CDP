@@ -10,7 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "dist": "tsc && vite build && electron-builder",
-    "postinstall": "node scripts/patch-electron-rebuild.js && node scripts/copy-monaco.mjs",
+    "postinstall": "node scripts/patch-electron-rebuild.js && node scripts/copy-monaco.mjs && node scripts/copy-pyodide.mjs",
     "build:ime": "powershell -ExecutionPolicy Bypass -File scripts/build-ime-helper.ps1"
   },
   "dependencies": {
@@ -30,6 +30,7 @@
     "electron": "^35.7.5",
     "electron-builder": "^26.5.0",
     "postcss": "^8.4.40",
+    "pyodide": "0.25.0",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.0",
     "vite": "^7.3.1"
@@ -39,7 +40,7 @@
   },
   "build": {
     "appId": "com.exam.system",
-    "icon": "build/app_icon.ico",
+    "icon": "app_icon.ico",
     "productName": "Python智能考试系统",
     "files": [
       "dist/**/*",
@@ -47,15 +48,15 @@
     ],
     "extraResources": [
       {
-        "from": "external-sources/app_icon.ico",
+        "from": "build/app_icon.ico",
         "to": "external-sources/app_icon.ico"
       },
       {
-        "from": "external-sources/setup_icon.ico",
+        "from": "build/setup_icon.ico",
         "to": "external-sources/setup_icon.ico"
       },
       {
-        "from": "external-sources/uninstall_icon.ico",
+        "from": "build/uninstall_icon.ico",
         "to": "external-sources/uninstall_icon.ico"
       },
       {
@@ -68,12 +69,12 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "build/app_icon.ico"
+      "icon": "app_icon.ico"
     },
     "nsis": {
-      "installerIcon": "build/setup_icon.ico",
-      "uninstallerIcon": "build/uninstall_icon.ico",
-      "installerHeaderIcon": "build/setup_icon.ico"
+      "installerIcon": "setup_icon.ico",
+      "uninstallerIcon": "uninstall_icon.ico",
+      "installerHeaderIcon": "setup_icon.ico"
     },
     "mac": {
       "target": "dmg"

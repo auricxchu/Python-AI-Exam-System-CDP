@@ -1,22 +1,63 @@
 
 // Check if the environment supports SharedArrayBuffer (Requires Secure Context + COOP/COEP headers)
 const supportsSAB = typeof SharedArrayBuffer !== 'undefined';
+const PYODIDE_LOCAL_INDEX_URL = new URL('pyodide/', window.location.href).toString();
+const PYODIDE_CDN_INDEX_URL = "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/";
+const PYODIDE_SCRIPT_CANDIDATES = [
+  new URL('pyodide.js', PYODIDE_LOCAL_INDEX_URL).toString(),
+  new URL('pyodide.js', PYODIDE_CDN_INDEX_URL).toString()
+];
 
 // Worker Code as a string
 const workerCode = `
-importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+const FALLBACK_PYODIDE_INDEX_URL = ${JSON.stringify(PYODIDE_CDN_INDEX_URL)};
 
 let pyodide = null;
 let stdinBuffer = null;
 let dataBuffer = null;
 let sessionGlobals = new Map();
 let currentSessionId = null;
+let activeIndexURL = FALLBACK_PYODIDE_INDEX_URL;
 
-async function init(sab, dataSab) {
+const getIndexUrlCandidates = (preferredIndexURL) => {
+  const candidates = [preferredIndexURL, FALLBACK_PYODIDE_INDEX_URL].filter(Boolean);
+  return [...new Set(candidates)];
+};
+
+async function ensurePyodideRuntime(preferredIndexURL) {
+  let lastError = null;
+  for (const candidate of getIndexUrlCandidates(preferredIndexURL)) {
+    try {
+      importScripts(new URL('pyodide.js', candidate).toString());
+      activeIndexURL = candidate;
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Failed to load Pyodide runtime');
+}
+
+async function init(sab, dataSab, indexURL) {
   stdinBuffer = new Int32Array(sab);
   dataBuffer = new Uint8Array(dataSab);
-  
-  pyodide = await loadPyodide();
+
+  await ensurePyodideRuntime(indexURL);
+  let lastError = null;
+  for (const candidate of getIndexUrlCandidates(activeIndexURL)) {
+    try {
+      pyodide = await loadPyodide({ indexURL: candidate });
+      activeIndexURL = candidate;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!pyodide) {
+    throw lastError || new Error('Failed to initialize Pyodide');
+  }
   
   const normalizeOutput = (chunk) => {
     if (typeof chunk === 'string') return chunk;
@@ -58,11 +99,11 @@ const ensureSessionGlobals = (sessionId) => {
 };
 
 self.onmessage = async (e) => {
-  const { type, code, sab, dataSab, sessionId } = e.data;
+  const { type, code, sab, dataSab, sessionId, indexURL } = e.data;
   
   if (type === 'init') {
     try {
-        await init(sab, dataSab);
+        await init(sab, dataSab, indexURL);
         postMessage({ type: 'ready' });
     } catch (e) {
         postMessage({ type: 'output', text: "Init Error: " + e.message });
@@ -111,8 +152,20 @@ let mainPyodide: any = null;
 let mainReadyPromise: Promise<void> | null = null;
 const mainSessionGlobals = new Map<string, any>();
 
-const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js";
 let scriptLoadPromise: Promise<void> | null = null;
+
+const loadScript = (src: string) =>
+  new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      script.remove();
+      reject(new Error(`Failed to load script: ${src}`));
+    };
+    document.head.appendChild(script);
+  });
 
 const feedInputBuffer = (text: string) => {
   if (!sab || !dataSab) return;
@@ -178,14 +231,19 @@ const ensurePyodideScriptLoaded = async () => {
   if (typeof loadPyodide !== 'undefined') return;
   if (scriptLoadPromise) return scriptLoadPromise;
 
-  scriptLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = PYODIDE_CDN;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Pyodide script"));
-    document.head.appendChild(script);
-  });
+  scriptLoadPromise = (async () => {
+    let lastError: unknown = null;
+    for (const src of [...new Set(PYODIDE_SCRIPT_CANDIDATES)]) {
+      try {
+        await loadScript(src);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error("Failed to load Pyodide script");
+  })();
 
   return scriptLoadPromise;
 };
@@ -261,7 +319,7 @@ const initWorkerMode = async () => {
         }
       }
     };
-    worker.postMessage({ type: 'init', sab, dataSab });
+    worker.postMessage({ type: 'init', sab, dataSab, indexURL: PYODIDE_LOCAL_INDEX_URL });
   });
 
   return workerReadyPromise;
@@ -280,9 +338,15 @@ const initMainThreadMode = async () => {
       throw new Error("Pyodide script is not available after loading");
     }
     // @ts-ignore
-    mainPyodide = await loadPyodide();
+    mainPyodide = await loadPyodide({ indexURL: PYODIDE_LOCAL_INDEX_URL });
     console.log("Main Thread Pyodide Ready");
-  })();
+  })().catch(async (error) => {
+    console.warn("Local Pyodide assets unavailable, falling back to CDN.", error);
+    scriptLoadPromise = null;
+    await ensurePyodideScriptLoaded();
+    // @ts-ignore
+    mainPyodide = await loadPyodide({ indexURL: PYODIDE_CDN_INDEX_URL });
+  });
 
   return mainReadyPromise;
 };

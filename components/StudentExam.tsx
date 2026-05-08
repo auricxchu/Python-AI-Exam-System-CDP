@@ -1,7 +1,7 @@
 ﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen
+  Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, Type, ZoomIn, Command, Info, Sun, Moon, Lock, LockOpen, ShieldAlert, MessageSquare
 } from 'lucide-react';
 import { ExamConfig, Question, GradingResult, UserProfile, ExamReport, ExamReviewSummary } from '../types';
 import { Button } from './ui';
@@ -45,7 +45,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [results, setResults] = useState<Record<string, GradingResult>>({});
   const [finalScore, setFinalScore] = useState(0);
   const [animatedFinalScore, setAnimatedFinalScore] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string} | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<{success: boolean, error?: string, url?: string} | null>(null);
   const [examFinishedAt, setExamFinishedAt] = useState<string | null>(null);
   const [reviewSummary, setReviewSummary] = useState<ExamReviewSummary | null>(null);
   const [expandedResultId, setExpandedResultId] = useState<string | null>(null);
@@ -74,6 +74,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const [infoMessage, setInfoMessage] = useState("");
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<'technical' | 'grading' | 'other'>('technical');
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<{ success: boolean; error?: string } | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null); // Image Modal
 
   // Input Handling State
@@ -83,6 +88,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolveInputRef = useRef<((value: string) => void) | null>(null);
   const runNonceRef = useRef<Record<string, number>>({});
   const outputShadowRef = useRef<Record<string, string>>({});
+  const stdoutShadowRef = useRef<Record<string, string>>({});
   const mainSplitRef = useRef<HTMLDivElement | null>(null);
   const editorSplitRef = useRef<HTMLDivElement | null>(null);
   const scoreAnimationFrameRef = useRef<number | null>(null);
@@ -95,13 +101,12 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   // Environment State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [systemTime, setSystemTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour12: false }));
-  const offlineSinceRef = useRef<number | null>(null);
-  const [offlineLocked, setOfflineLocked] = useState(false);
   
   // Input Method & Keyboard State
   const [capsLock, setCapsLock] = useState(false);
   const [imeActive, setImeActive] = useState(false);
   const [imeStatus, setImeStatus] = useState<{ open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null>(null);
+  const [imeShiftOpen, setImeShiftOpen] = useState<boolean | null>(null);
   const [imePosition, setImePosition] = useState(() => {
     const saved = localStorage.getItem('ime_float_position');
     if (saved) {
@@ -111,6 +116,10 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
     return { x: Math.max(16, window.innerWidth - 220), y: Math.max(16, window.innerHeight - 68) };
   });
+  const shiftTapRef = useRef<{ downAt: number; used: boolean }>({ downAt: 0, used: false });
+  const imeLastKlidRef = useRef('');
+  const imeManualOverrideRef = useRef(false);
+  const lastChineseOpenRef = useRef<boolean | null>(null);
   const imeFloatRef = useRef<HTMLDivElement | null>(null);
   const imeDragOffsetRef = useRef({ x: 0, y: 0 });
 
@@ -131,8 +140,35 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const resolvedCurrentImage = useResolvedImageUrl(currentQ.imageUrl);
   const cacheBustToken = useMemo(() => Date.now().toString(), []);
   const imeName = (imeStatus?.name || '').trim();
-  const imeOpen = imeStatus ? imeStatus.open : imeActive;
-  const imePrimary = imeStatus ? (imeOpen ? '中' : '英') : '';
+  const imeNameLower = imeName.toLowerCase();
+  const hasImeName = imeName.length > 0;
+  const klid = (imeStatus?.klid || '').toUpperCase();
+  const isKlidChinese = klid.endsWith('0804');
+  const isKlidEnglish = klid.endsWith('0409');
+  const isEnglishKeyboard = hasImeName && (
+    imeNameLower.includes('english') ||
+    imeNameLower.includes('eng') ||
+    imeNameLower.includes('us') ||
+    imeNameLower.includes('keyboard')
+  );
+  const isChineseIme = klid
+    ? isKlidChinese
+    : (hasImeName ? (
+        !isEnglishKeyboard && (
+          imeNameLower.includes('pinyin') ||
+          imeNameLower.includes('wubi') ||
+          imeNameLower.includes('ime')
+        )
+      ) : true);
+  const imeOpen = isChineseIme ? (imeShiftOpen ?? (imeStatus ? imeStatus.open : imeActive)) : false;
+  const variant = (imeStatus?.variant || '').toLowerCase();
+  const isWubi =
+    variant === 'wubi' ||
+    imeNameLower.includes('wubi') ||
+    klid.startsWith('E0020804') ||
+    klid.startsWith('E0050804');
+  const imeSecondary = isChineseIme ? (isWubi ? '五笔' : '拼') : '';
+  const imePrimary = isChineseIme ? (imeOpen ? '中' : '英') : 'ENG';
 
   // Reset image error state when question or resolved image changes
   useEffect(() => {
@@ -253,6 +289,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     // Clear previous output first
     setOutputs(prev => ({ ...prev, [runKey]: "" }));
     outputShadowRef.current[runKey] = "";
+    stdoutShadowRef.current[runKey] = "";
 
     const timeoutId = window.setTimeout(() => {
         if (runNonceRef.current[runKey] !== runNonce) return;
@@ -271,7 +308,23 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             (currentOutput) => {
                 if (runNonceRef.current[runKey] != runNonce) return;
                 if (!currentOutput) return;
-                const display = (outputShadowRef.current[runKey] || "") + currentOutput;
+                const prevStdout = stdoutShadowRef.current[runKey] || "";
+                let delta = currentOutput;
+                if (currentOutput.startsWith(prevStdout)) {
+                    delta = currentOutput.slice(prevStdout.length);
+                } else {
+                    let overlap = 0;
+                    const maxOverlap = Math.min(prevStdout.length, currentOutput.length);
+                    for (let i = 1; i <= maxOverlap; i++) {
+                        if (prevStdout.slice(-i) === currentOutput.slice(0, i)) {
+                            overlap = i;
+                        }
+                    }
+                    delta = currentOutput.slice(overlap);
+                }
+                stdoutShadowRef.current[runKey] = currentOutput;
+                if (!delta) return;
+                const display = (outputShadowRef.current[runKey] || "") + delta;
                 outputShadowRef.current[runKey] = display;
                 setOutputs(prev => ({ ...prev, [runKey]: display }));
                 if (currentOutput.includes('OSError: [Errno 29]') || currentOutput.includes('I/O error')) {
@@ -317,6 +370,26 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         if (e.getModifierState("CapsLock") !== capsLock) {
             setCapsLock(e.getModifierState("CapsLock"));
         }
+
+        if (e.key === 'Shift') {
+            shiftTapRef.current = { downAt: Date.now(), used: false };
+        } else if (shiftTapRef.current.downAt) {
+            shiftTapRef.current.used = true;
+        }
+    };
+
+    const handleGlobalKeyUp = (e: KeyboardEvent) => {
+        if (e.key !== 'Shift') return;
+        const { downAt, used } = shiftTapRef.current;
+        shiftTapRef.current = { downAt: 0, used: false };
+        if (!used && Date.now() - downAt < 450) {
+            imeManualOverrideRef.current = true;
+            setImeShiftOpen(prev => {
+              const next = !(prev ?? (lastChineseOpenRef.current ?? false));
+              lastChineseOpenRef.current = next;
+              return next;
+            });
+        }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -329,6 +402,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const handleCompositionEnd = () => setImeActive(false);
 
     window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keyup', handleGlobalKeyUp);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('compositionstart', handleCompositionStart);
     window.addEventListener('compositionend', handleCompositionEnd);
@@ -339,45 +413,22 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }, 1000);
 
     // Network Listeners
-    const handleOnline = () => {
-      setIsOnline(true);
-      offlineSinceRef.current = null;
-      setOfflineLocked(false);
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      if (!offlineSinceRef.current) {
-        offlineSinceRef.current = Date.now();
-      }
-    };
-    // If already offline on mount, start the offline timer immediately
-    if (!navigator.onLine && !offlineSinceRef.current) {
-      offlineSinceRef.current = Date.now();
-    }
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic offline check: lock exam after 60s without network
-    const offlineCheckInterval = window.setInterval(() => {
-      if (!navigator.onLine && offlineSinceRef.current && !examFinished) {
-        const elapsed = Date.now() - offlineSinceRef.current;
-        if (elapsed > 60000) {
-          setOfflineLocked(true);
-        }
-      }
-    }, 5000);
-
     return () => {
         window.removeEventListener('keydown', handleGlobalKeyDown);
+        window.removeEventListener('keyup', handleGlobalKeyUp);
         window.removeEventListener('mousedown', handleMouseDown);
         window.removeEventListener('compositionstart', handleCompositionStart);
         window.removeEventListener('compositionend', handleCompositionEnd);
         clearInterval(clockInterval);
-        clearInterval(offlineCheckInterval);
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, [capsLock, isRunning, pyodideReady, currentIdx, answers, examFinished]); // Deps for handleRun closure
+  }, [capsLock, isRunning, pyodideReady, currentIdx, answers]); // Deps for handleRun closure
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -422,42 +473,83 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const electronRequire = (window as any).electronRequire || (window as any).require;
     if (!electronRequire) return;
     const { ipcRenderer } = electronRequire('electron');
-
-    let pollTimer: number | undefined;
-
     const applyStatus = (payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
       setImeStatus(payload);
+      setImeShiftOpen((prev) => {
+        const now = Date.now();
+        const nextKlid = (payload.klid || '').toUpperCase();
+        const prevKlid = imeLastKlidRef.current;
+        if (nextKlid && nextKlid !== prevKlid) {
+          imeLastKlidRef.current = nextKlid;
+          if (nextKlid.endsWith('0409')) {
+            imeManualOverrideRef.current = false;
+            return false;
+          }
+          if (nextKlid.endsWith('0804')) {
+            if (lastChineseOpenRef.current === null) {
+              lastChineseOpenRef.current = payload.open;
+              imeManualOverrideRef.current = false;
+              return payload.open;
+            }
+            imeManualOverrideRef.current = true;
+            return lastChineseOpenRef.current;
+          }
+          return payload.open;
+        }
+        if (imeManualOverrideRef.current && isChineseIme) return prev;
+        if (isChineseIme) {
+          lastChineseOpenRef.current = payload.open;
+        }
+        return payload.open;
+      });
     };
-
     const fetchStatus = () => {
       return ipcRenderer.invoke('ime-status-get').then((payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string } | null) => {
         if (payload) applyStatus(payload);
       }).catch(() => {});
     };
-
     fetchStatus();
-
-    const schedulePoll = () => {
-      pollTimer = window.setTimeout(() => {
-        fetchStatus();
-        schedulePoll();
-      }, 600);
-    };
-    schedulePoll();
-
     const handler = (_event: any, payload: { open: boolean; name?: string; klid?: string; profile?: string; variant?: string }) => {
       applyStatus(payload);
-      // Reset poll timer on push to avoid racing with IPC
-      if (pollTimer) window.clearTimeout(pollTimer);
-      schedulePoll();
     };
     ipcRenderer.on('ime-status', handler);
-
+    const poll = window.setInterval(fetchStatus, 600);
     return () => {
       ipcRenderer.removeListener('ime-status', handler);
-      if (pollTimer) window.clearTimeout(pollTimer);
+      window.clearInterval(poll);
     };
   }, []);
+
+  useEffect(() => {
+    const electronRequire = (window as any).electronRequire || (window as any).require;
+    if (!electronRequire) return;
+    const { ipcRenderer } = electronRequire('electron');
+
+    ipcRenderer.invoke('exam-security-set', true).catch(() => {});
+
+    const handler = (_event: any, payload: { reason?: string; occurredAt?: string }) => {
+      console.warn("Exam security warning:", payload?.reason || "unknown");
+    };
+
+    ipcRenderer.on('exam-security-warning', handler);
+
+    return () => {
+      ipcRenderer.removeListener('exam-security-warning', handler);
+      // Note: do NOT clear exam security here on unmount.
+      // Security is cleared when exam finishes (see the examFinished effect below),
+      // or when the exit button is pressed, to avoid exiting fullscreen.
+    };
+  }, []);
+
+  // Clear exam security (kiosk mode) when exam finishes, but keep fullscreen.
+  // This must happen AFTER finishExam sets examFinished=true.
+  useEffect(() => {
+    if (!examFinished) return;
+    const electronRequire = (window as any).electronRequire || (window as any).require;
+    if (!electronRequire) return;
+    const { ipcRenderer } = electronRequire('electron');
+    ipcRenderer.invoke('exam-security-set', false).catch(() => {});
+  }, [examFinished]);
 
   useEffect(() => {
     if (examFinished) return;
@@ -490,8 +582,15 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   };
 
   const handleSafeSystemExit = () => {
-    if ((window as any).require) {
-        onSystemExit();
+    const electronRequire = (window as any).electronRequire || (window as any).require;
+    if (electronRequire) {
+        try {
+            const { ipcRenderer } = electronRequire('electron');
+            ipcRenderer.send('app-exit');
+        } catch (e) {
+            console.error("Failed to quit app", e);
+            window.close();
+        }
     } else {
         setInfoMessage("这是网页预览模式，无法关闭窗口。\n在打包后的应用中将直接退出系统。");
         setInfoModalOpen(true);
@@ -825,6 +924,66 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     }
   };
 
+  const submitFeedbackTicket = async () => {
+    const message = feedbackMessage.trim();
+    if (!message) {
+      setInfoMessage("请先填写你遇到的问题或对成绩的疑问。");
+      setInfoModalOpen(true);
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+    try {
+      const answeredCount = questions.filter((question) => {
+        const answer = answers[question.id];
+        return !!answer && answer !== question.template;
+      }).length;
+
+      const result = await cloudService.submitExamFeedback({
+        category: feedbackCategory,
+        message,
+        studentName: user.name,
+        studentId: user.studentId,
+        examTitle: config.examTitle,
+        startTime: user.joinedAt,
+        endTime: examFinishedAt || new Date().toISOString(),
+        score: finalScore,
+        aiProvider: usedProvider,
+        reportUrl: uploadStatus?.url,
+        examContext: {
+          questionCount: questions.length,
+          answeredCount,
+          durationMinutes: config.duration,
+          uploadStatus,
+          reviewSummary,
+          results,
+          questions,
+          answers
+        },
+        clientContext: {
+          theme,
+          isOnline,
+          userAgent: navigator.userAgent,
+          exportedToDesktop: !!desktopExportStatus?.success
+        }
+      });
+
+      setFeedbackStatus(result.success ? { success: true } : { success: false, error: result.error });
+
+      if (result.success) {
+        setFeedbackModalOpen(false);
+        setFeedbackMessage("");
+        setFeedbackCategory('technical');
+        setInfoMessage("反馈工单已提交，系统已附带本次考试信息，老师可以在后台查看。");
+      } else {
+        setInfoMessage(`反馈提交失败：${result.error || '未知错误'}`);
+      }
+      setInfoModalOpen(true);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
   if (isSubmitting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center text-white space-y-6">
@@ -857,8 +1016,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   if (examFinished) {
     const isLightTheme = theme === 'light';
     const pageClass = isLightTheme
-      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-4 sm:p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-y-auto'
-      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-4 sm:p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-y-auto';
+      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-hidden'
+      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-hidden';
     const shellClass = 'max-w-[1780px] w-full relative z-10 animate-in fade-in zoom-in-95 duration-500';
     const asideClass = 'w-full max-w-[430px]';
     const asideCardClass = isLightTheme
@@ -925,6 +1084,17 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       : (isLightTheme
         ? 'flex items-center gap-2 text-xs bg-rose-50 text-rose-700 px-3 py-1.5 rounded-full border border-rose-200'
         : 'flex items-center gap-2 text-xs bg-rose-900/20 text-rose-300 px-3 py-1.5 rounded-full border border-rose-900/50');
+    const feedbackStatusClass = feedbackStatus?.success
+      ? (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-200'
+        : 'flex items-center gap-2 text-xs bg-emerald-900/20 text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-900/50')
+      : (isLightTheme
+        ? 'flex items-center gap-2 text-xs bg-rose-50 text-rose-700 px-3 py-1.5 rounded-full border border-rose-200'
+        : 'flex items-center gap-2 text-xs bg-rose-900/20 text-rose-300 px-3 py-1.5 rounded-full border border-rose-900/50');
+    const feedbackInputClass = isLightTheme
+      ? 'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200'
+      : 'w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30';
+    const feedbackHintClass = isLightTheme ? 'text-slate-500' : 'text-slate-400';
 
     return (
       <div className={pageClass}>
@@ -949,6 +1119,90 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           </div>
         </Modal>
 
+        <Modal
+          isOpen={feedbackModalOpen}
+          onClose={() => !isSubmittingFeedback && setFeedbackModalOpen(false)}
+          title="提交反馈工单"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setFeedbackModalOpen(false)} disabled={isSubmittingFeedback}>
+                取消
+              </Button>
+              <Button onClick={submitFeedbackTicket} isLoading={isSubmittingFeedback}>
+                提交反馈
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <div className={`text-xs font-medium mb-2 ${feedbackHintClass}`}>反馈类型</div>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFeedbackCategory('technical')}
+                  className={`rounded-xl border px-4 py-3 text-sm font-medium transition ${
+                    feedbackCategory === 'technical'
+                      ? (isLightTheme
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-blue-500/40 bg-blue-500/10 text-blue-300')
+                      : (isLightTheme
+                        ? 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600')
+                  }`}
+                >
+                  技术问题
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedbackCategory('grading')}
+                  className={`rounded-xl border px-4 py-3 text-sm font-medium transition ${
+                    feedbackCategory === 'grading'
+                      ? (isLightTheme
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-blue-500/40 bg-blue-500/10 text-blue-300')
+                      : (isLightTheme
+                        ? 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600')
+                  }`}
+                >
+                  成绩疑问
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedbackCategory('other')}
+                  className={`rounded-xl border px-4 py-3 text-sm font-medium transition ${
+                    feedbackCategory === 'other'
+                      ? (isLightTheme
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-blue-500/40 bg-blue-500/10 text-blue-300')
+                      : (isLightTheme
+                        ? 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600')
+                  }`}
+                >
+                  其他
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className={`text-xs font-medium mb-2 ${feedbackHintClass}`}>问题描述</div>
+              <textarea
+                value={feedbackMessage}
+                onChange={(event) => setFeedbackMessage(event.target.value)}
+                rows={6}
+                maxLength={2000}
+                placeholder={feedbackCategory === 'technical' ? '请描述你遇到的技术问题，例如无法运行、页面异常、导出失败等。' : feedbackCategory === 'grading' ? '请说明你对成绩或评语的疑问，老师查看时会自动带上本次考试信息。' : '请分享你的建议、体验或任何想告诉老师的内容。'}
+                className={feedbackInputClass}
+              />
+              <div className={`mt-2 text-[11px] ${feedbackHintClass}`}>
+                提交时会自动附带姓名、学号、考试名称、考试时间、得分、答题结果和当前成绩信息。
+              </div>
+            </div>
+          </div>
+        </Modal>
+
         <ImageModal
           isOpen={!!previewImage}
           src={getCacheBustedUrl(resolvedPreviewImage || previewImage || "")}
@@ -956,16 +1210,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         />
 
         <div className={shellClass}>
-          <div className="grid items-start gap-4 sm:gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
-            <div className={asideClass}>
+          <div className="grid gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
+            <div className={`${asideClass} flex flex-col`}>
               <div className={asideCardClass}>
                 <div className="text-center">
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
-                  <h2 className={`text-xl sm:text-2xl md:text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
+                  <h2 className={`text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
                   <p className={textMutedClass}>考试信息与最终得分</p>
-                  <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
+                  <div className="text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
                 </div>
 
                 <div className="report-info-grid">
@@ -1015,11 +1269,19 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           : '成绩单导出失败'}
                       </div>
                     )}
+
+                    {feedbackStatus && (
+                      <div className={feedbackStatusClass} title={feedbackStatus.error}>
+                        {feedbackStatus.success ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                        {feedbackStatus.success ? '反馈工单已提交' : '反馈提交失败'}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className={`pt-6 mt-6 border-t space-y-3 ${asideDividerClass}`}>
+                {/* Row 1: Download Report */}
                 <Button
                   onClick={() => reportExportMeta && exportReportToDesktop(reportExportMeta.filename, reportExportMeta.content)}
                   variant="secondary"
@@ -1029,6 +1291,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                 >
                   <Download className="w-4 h-4"/> 导出成绩单
                 </Button>
+
+                {/* Row 2: Return Home + Exit System */}
                 <div className="grid grid-cols-2 gap-3">
                   <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl shadow-none'}>
                     <LogOut className="w-4 h-4"/> 返回首页
@@ -1036,6 +1300,35 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                   <Button onClick={handleSafeSystemExit} className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-none">
                     <Power className="w-4 h-4"/> 退出系统
                   </Button>
+                </div>
+              </div>
+
+              {/* Row 3: Feedback Module - pushed to bottom with gap */}
+              <div className="mt-auto pt-8">
+                <div className={`rounded-2xl border p-5 ${isLightTheme ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200' : 'bg-gradient-to-br from-blue-900/20 to-indigo-900/20 border-blue-500/20'}`}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className={`shrink-0 p-2 rounded-xl ${isLightTheme ? 'bg-blue-100' : 'bg-blue-500/20'}`}>
+                      <MessageSquare className={`w-5 h-5 ${isLightTheme ? 'text-blue-600' : 'text-blue-400'}`} />
+                    </div>
+                    <div>
+                      <h4 className={`font-bold text-sm ${isLightTheme ? 'text-blue-800' : 'text-blue-300'}`}>遇到问题了吗？</h4>
+                      <p className={`text-xs mt-0.5 leading-relaxed ${isLightTheme ? 'text-blue-600/80' : 'text-blue-400/70'}`}>
+                        有任何疑问或建议？无论是技术问题、成绩疑问，与考试体验相关的任何问题，我们都很乐意倾听。
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setFeedbackModalOpen(true)}
+                    variant="secondary"
+                    className={`w-full h-10 rounded-xl shadow-none ${isLightTheme ? 'bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-700' : 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30 text-blue-300'}`}
+                  >
+                    <MessageSquare className="w-4 h-4"/> 反馈问题
+                  </Button>
+                  {feedbackStatus && (
+                    <div className={`mt-2 text-center text-xs ${feedbackStatus.success ? (isLightTheme ? 'text-emerald-600' : 'text-emerald-400') : (isLightTheme ? 'text-rose-600' : 'text-rose-400')}`}>
+                      {feedbackStatus.success ? '✓ 反馈已提交，感谢你的声音！' : `反馈提交失败：${feedbackStatus.error || '未知错误'}`}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1395,6 +1688,18 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     )}
                 </div>
 
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border select-none shadow-sm ${
+                    theme === 'light'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : 'bg-amber-500/10 border-amber-400/30 text-amber-300'
+                  }`}
+                  title="考试防作弊监控运行中"
+                >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span className="text-xs font-semibold tracking-[0.04em]">防作弊启用中</span>
+                </div>
+
                 {/* System Clock */}
                 <div className="flex items-center gap-2 text-slate-400 select-none">
                     <Clock className="w-4 h-4" />
@@ -1494,46 +1799,32 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
          </div>
       </div>
 
-      {imeStatus && (
-        <div
-          ref={imeFloatRef}
-          className="ime-float"
-          style={{ left: imePosition.x, top: imePosition.y }}
-          title={imeName || '输入法状态'}
-        >
-          <div className="ime-pill">
-            <span className="ime-pill__drag" aria-hidden="true">
-              <span className="ime-pill__drag-dots">
-                <span />
-                <span />
-                <span />
-              </span>
+      <div
+        ref={imeFloatRef}
+        className="ime-float"
+        style={{ left: imePosition.x, top: imePosition.y }}
+        title={imeName || (isChineseIme ? '中文输入法' : '英文键盘')}
+      >
+        <div className={`ime-pill ${isChineseIme ? '' : 'ime-pill--eng'}`}>
+          <span className="ime-pill__drag" aria-hidden="true">
+            <span className="ime-pill__drag-dots">
+              <span />
+              <span />
+              <span />
             </span>
-            <span className="ime-pill__divider" />
-            <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
-              <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
-                {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
-              </span>
-              <span>CAPS</span>
+          </span>
+          <span className="ime-pill__divider" />
+          <span className={`ime-pill__cell ime-pill__caps ${capsLock ? 'ime-pill__caps--on' : ''}`}>
+            <span className={`ime-pill__caps-icon ${capsLock ? 'ime-pill__caps-icon--on' : ''}`}>
+              {capsLock ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
             </span>
-            <span className="ime-pill__divider" />
-            <span className="ime-pill__cell">{imePrimary || '--'}</span>
-          </div>
+            <span>CAPS</span>
+          </span>
+          <span className="ime-pill__divider" />
+          <span className="ime-pill__cell">{imePrimary}</span>
+          {imeSecondary && <span className="ime-pill__cell">{imeSecondary}</span>}
         </div>
-      )}
-
-      {/* Offline Lock Overlay */}
-      {offlineLocked && !examFinished && (
-        <div className="absolute inset-0 z-[100] bg-slate-950/95 flex flex-col items-center justify-center gap-6 backdrop-blur-sm">
-          <WifiOff className="w-16 h-16 text-red-400" />
-          <h2 className="text-2xl font-bold text-white">网络连接已断开</h2>
-          <p className="text-slate-400 text-sm max-w-md text-center leading-relaxed">
-            系统检测到网络连接已中断超过 60 秒。<br />
-            为防止题目泄露，考试已暂停。<br />
-            请等待监考老师协助恢复网络后继续答题。
-          </p>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

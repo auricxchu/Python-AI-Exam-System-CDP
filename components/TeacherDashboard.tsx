@@ -763,8 +763,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Header */}
       <div className="w-full max-w-none flex justify-between items-center mb-6 shrink-0 pt-2">
          <div className="flex items-center gap-4">
-           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-3">
-             <Cloud className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" /> 云端题库管理
+           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+             <Cloud className="w-8 h-8 text-blue-500" /> 云端题库管理
            </h2>
            {(isLoadingCloud || isSyncing) && (
               <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-900/20 px-3 py-1 rounded-full border border-blue-800">
@@ -785,7 +785,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
         {/* Left Panel: Settings - Scrollable */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
+        <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
            {/* Basic Settings */}
            <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2"><Settings className="w-4 h-4"/> 基础设置</h3>
@@ -868,11 +868,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
            </div>
 
-           <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50 min-h-[420px]">
+           <div className="flex min-h-[420px] flex-col overflow-hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
              <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
                {localConfig.assemblyMode === 'random' ? '随机抽题设置' : '自由选题设置'}
              </h3>
 
+             <div className={`${localConfig.assemblyMode === 'manual' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
              {localConfig.assemblyMode === 'random' ? (
                <div className="overflow-hidden rounded-lg border border-slate-800 mb-4">
                  <div className="grid grid-cols-4 bg-slate-800/50 p-2 text-xs font-bold text-slate-500 text-center">
@@ -901,7 +902,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                  })}
                </div>
              ) : (
-               <div className="space-y-3">
+               <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
                  {manualPaperEntries.length === 0 ? (
                    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-4 py-6 text-sm leading-relaxed text-slate-400">
                      右侧题库中的题目在自由选题模式下会出现“添加到试卷”按钮。先选择题目，再回到这里调整顺序和分值。
@@ -965,6 +966,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                  )}
                </div>
              )}
+             </div>
 
              <div className={`${localConfig.assemblyMode === 'manual' ? 'mt-5' : ''} mb-6 px-1`}>
                <div className="flex items-center justify-between text-xs text-slate-500">
