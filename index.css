@@ -906,12 +906,6 @@ body.splitter-dragging .splitter-horizontal {
   transform: translateY(0);
 }
 
-/* Short screen: dynamically scale landing content to fit without scrolling */
-.landing-content {
-  --landing-scale: min(1, calc((100vh - 5rem) / 950));
-  transform: scale(var(--landing-scale));
-  transform-origin: top center;
-}
 
 .opening-editor {
   will-change: transform, opacity;

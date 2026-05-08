@@ -69,6 +69,7 @@ export default function App() {
   });
   const [isCheckingProviders, setIsCheckingProviders] = useState(false);
   const modelWheelRef = useRef<HTMLDivElement | null>(null);
+  const landingContentRef = useRef<HTMLDivElement | null>(null);
   const aiProviderRef = useRef<AiProvider>(aiProvider);
   const [aiGuardOpen, setAiGuardOpen] = useState(false);
   const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
@@ -129,6 +130,20 @@ export default function App() {
       setLandingAnimKey((prev) => prev + 1);
     }
   }, [openingDone, mode]);
+
+  // Scale landing content to fit viewport height without scrolling
+  useEffect(() => {
+    const applyScale = () => {
+      if (!landingContentRef.current) return;
+      const vh = window.innerHeight;
+      const scale = Math.min(1, (vh - 80) / 950);
+      landingContentRef.current.style.transform = `scale(${scale})`;
+      landingContentRef.current.style.transformOrigin = 'top center';
+    };
+    applyScale();
+    window.addEventListener('resize', applyScale);
+    return () => window.removeEventListener('resize', applyScale);
+  }, [openingDone]);
 
   useEffect(() => {
     aiProviderRef.current = aiProvider;
@@ -598,7 +613,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
-      <div key={`landing-${landingAnimKey}`} className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
+      <div ref={landingContentRef} key={`landing-${landingAnimKey}`} className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           {mode === 'landing' && (
             <>
