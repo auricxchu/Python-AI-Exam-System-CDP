@@ -57,7 +57,7 @@
       {
         "from": "build/uninstall_icon.ico",
         "to": "external-sources/uninstall_icon.ico"
-      },
+      }
     ],
     "directories": {
       "output": "release"
