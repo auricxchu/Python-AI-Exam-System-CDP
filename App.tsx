@@ -14,6 +14,7 @@ import Modal from './components/Modal';
 import OpeningScreen from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
 import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
+import { SUPABASE_URL } from './services/supabaseClient';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
@@ -101,6 +102,9 @@ export default function App() {
     const fallbackMs = openingVariant === 'lite' ? 5600 : 12000;
     const timer = window.setTimeout(() => {
       setOpeningDone(true);
+      if (openingVariant === 'full') {
+        localStorage.setItem(OPENING_SEEN_KEY, '1');
+      }
     }, fallbackMs);
     return () => window.clearTimeout(timer);
   }, [openingDone, openingVariant]);
@@ -334,6 +338,14 @@ const requestEnterMode = (nextMode: AppMode) => {
             // Check Monaco Editor CDN (Critical for UI)
             fetch("https://unpkg.com/monaco-editor@0.44.0/min/vs/loader.js", { method: 'HEAD', mode: 'no-cors' })
         ];
+        // Check Supabase backend reachability if configured
+        if (SUPABASE_URL) {
+            checks.push(
+                fetch(`${SUPABASE_URL}`, { method: 'HEAD' }).catch(() => {
+                    throw new Error('Supabase unreachable');
+                })
+            );
+        }
 
         await Promise.all(checks);
         return true;
@@ -563,20 +575,20 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
-      <div key={`landing-${landingAnimKey}`} className={`landing-content pt-24 pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
+      <div key={`landing-${landingAnimKey}`} className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           {mode === 'landing' && (
             <>
-              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-6 rounded-2xl mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
-                 <Code className="w-12 h-12 text-blue-400" />
+              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl mb-4 sm:mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
+                 <Code className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-blue-400" />
               </div>
-              <h1 className="landing-reveal landing-delay-2 text-4xl md:text-5xl font-bold text-white mb-3 text-center tracking-tight drop-shadow-lg">
+              <h1 className="landing-reveal landing-delay-2 text-2xl sm:text-3xl md:text-5xl font-bold text-white mb-2 sm:mb-3 text-center tracking-tight drop-shadow-lg">
                 Python 智能考试系统
               </h1>
-              <p className="landing-reveal landing-delay-3 text-slate-400 text-lg mb-16 text-center max-w-2xl">
+              <p className="landing-reveal landing-delay-3 text-slate-400 text-sm sm:text-base md:text-lg mb-6 sm:mb-10 md:mb-16 text-center max-w-2xl">
                 基于 AI 的自动化测评与管理平台
               </p>
-              <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-10">
+              <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-4 sm:mb-6 md:mb-10">
                 <div className="model-picker">
                   <div className="model-picker__header">
                     <div className="model-picker__title">{modelSelectorCopy.title}</div>
@@ -657,36 +669,36 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                 </div>
               </div>
-              <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
-                <button 
+              <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full max-w-4xl mb-6 sm:mb-10 md:mb-12">
+                <button
                   onClick={() => requestEnterMode('student_login')}
-                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-5 sm:p-8 md:p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
                 >
-                  <div className="flex justify-between items-start mb-8">
-                     <div className="bg-blue-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
-                       <GraduationCap className="w-8 h-8 text-blue-400" />
+                  <div className="flex justify-between items-start mb-4 sm:mb-8">
+                     <div className="bg-blue-900/20 p-3 sm:p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
+                       <GraduationCap className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" />
                      </div>
-                     <GraduationCap className="w-32 h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform rotate-12 opacity-20 group-hover:opacity-30 landing-card-watermark" />
+                     <GraduationCap className="w-24 h-24 sm:w-32 sm:h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform rotate-12 opacity-20 group-hover:opacity-30 landing-card-watermark" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">我是学生</h2>
-                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-1 sm:mb-2">我是学生</h2>
+                  <p className="text-slate-400 text-xs sm:text-sm mb-4 sm:mb-8 leading-relaxed">参加在线考试，实时代码运行与 AI 智能批改。</p>
                   <div className="flex items-center text-blue-400 font-bold text-sm">
                      进入考试 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
 
-                <button 
+                <button
                   onClick={() => requestEnterMode('teacher_login')}
-                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-5 sm:p-8 md:p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
                 >
-                  <div className="flex justify-between items-start mb-8">
-                     <div className="bg-purple-900/20 p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
-                       <Monitor className="w-8 h-8 text-purple-400" />
+                  <div className="flex justify-between items-start mb-4 sm:mb-8">
+                     <div className="bg-purple-900/20 p-3 sm:p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
+                       <Monitor className="w-6 h-6 sm:w-8 sm:h-8 text-purple-400" />
                      </div>
-                     <Monitor className="w-32 h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform -rotate-6 opacity-20 group-hover:opacity-30 landing-card-watermark" />
+                     <Monitor className="w-24 h-24 sm:w-32 sm:h-32 text-slate-700 absolute -right-6 -bottom-6 transition-all transform -rotate-6 opacity-20 group-hover:opacity-30 landing-card-watermark" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">我是老师</h2>
-                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-1 sm:mb-2">我是老师</h2>
+                  <p className="text-slate-400 text-xs sm:text-sm mb-4 sm:mb-8 leading-relaxed">管理题库，配置试卷规则，查看考试数据。</p>
                   <div className="flex items-center text-purple-400 font-bold text-sm">
                      进入后台 <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
                   </div>
@@ -694,7 +706,7 @@ const requestEnterMode = (nextMode: AppMode) => {
               </div>
               
               {/* System Exit Button (Flow Layout, No Overlap) */}
-              <div className="landing-reveal landing-delay-6 z-20 mt-4">
+              <div className="landing-reveal landing-delay-6 z-20 mt-2 sm:mt-4">
                  <button 
                    onClick={handleSystemExit}
                    className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
@@ -816,7 +828,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         </div>
       </div>
       {mode === 'landing' && (
-        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-600 text-[9px] tracking-wide text-center pointer-events-none z-30">
+        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-600 text-[7px] sm:text-[9px] tracking-wide text-center pointer-events-none z-30">
           &copy; 2024 Python Exam System. All Rights Reserved.
         </div>
       )}

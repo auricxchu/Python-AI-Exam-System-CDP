@@ -763,8 +763,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Header */}
       <div className="w-full max-w-none flex justify-between items-center mb-6 shrink-0 pt-2">
          <div className="flex items-center gap-4">
-           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-             <Cloud className="w-8 h-8 text-blue-500" /> 云端题库管理
+           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-3">
+             <Cloud className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" /> 云端题库管理
            </h2>
            {(isLoadingCloud || isSyncing) && (
               <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-900/20 px-3 py-1 rounded-full border border-blue-800">
