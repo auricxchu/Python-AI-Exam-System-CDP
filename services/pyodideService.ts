@@ -59,19 +59,21 @@ async function init(sab, dataSab, indexURL) {
     throw lastError || new Error('Failed to initialize Pyodide');
   }
   
-  const normalizeOutput = (chunk) => {
-    if (typeof chunk === 'string') return chunk;
-    if (chunk instanceof Uint8Array) return new TextDecoder().decode(chunk);
-    if (chunk instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(chunk));
-    return String(chunk ?? '');
+  const stdoutDecoder = new TextDecoder();
+  const stderrDecoder = new TextDecoder();
+  const postOutput = (text) => {
+    if (text) postMessage({ type: 'output', text, sessionId: currentSessionId });
   };
 
-  // Setup output streams — Pyodide 0.25 uses { raw: fn } for per-write callbacks
-  pyodide.setStdout({ raw: (text) => {
-    postMessage({ type: 'output', text: normalizeOutput(text), sessionId: currentSessionId });
+  // Pyodide 0.25 write handlers receive UTF-8 bytes and must return bytes written.
+  pyodide.setStdout({ write: (buffer) => {
+    postOutput(stdoutDecoder.decode(buffer, { stream: true }));
+    return buffer.length;
   }});
-  pyodide.setStderr({ raw: (text) => {
-    postMessage({ type: 'output', text: "Error: " + normalizeOutput(text), sessionId: currentSessionId });
+  pyodide.setStderr({ write: (buffer) => {
+    const text = stderrDecoder.decode(buffer, { stream: true });
+    postOutput(text ? "Error: " + text : "");
+    return buffer.length;
   }});
 
   // Setup blocking input mechanism using Atomics
@@ -409,17 +411,20 @@ export const runPythonCodeLocal = async (
     // --- Run in Main Thread (Fallback / Simple Input) ---
     if (!mainPyodide) throw new Error("Main thread Pyodide failed to init");
 
-    const normalizeOutput = (chunk: any) => {
-      if (typeof chunk === "string") return chunk;
-      if (chunk instanceof Uint8Array) return new TextDecoder().decode(chunk);
-      if (chunk instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(chunk));
-      return String(chunk ?? "");
-    };
+    const stdoutDecoder = new TextDecoder();
+    const stderrDecoder = new TextDecoder();
 
     // Configure streams for this run
-    // Use write to show prompt text immediately (no newline buffering)
-    mainPyodide.setStdout({ raw: (text: any) => onOutput(normalizeOutput(text)) });
-    mainPyodide.setStderr({ raw: (text: any) => onOutput("Error: " + normalizeOutput(text)) });
+    mainPyodide.setStdout({ write: (buffer: Uint8Array) => {
+      const text = stdoutDecoder.decode(buffer, { stream: true });
+      if (text) onOutput(text);
+      return buffer.length;
+    }});
+    mainPyodide.setStderr({ write: (buffer: Uint8Array) => {
+      const text = stderrDecoder.decode(buffer, { stream: true });
+      if (text) onOutput("Error: " + text);
+      return buffer.length;
+    }});
     
     // Fallback: Use window.prompt because main thread cannot block asynchronously without prompt()
     mainPyodide.setStdin({
