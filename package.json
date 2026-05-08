@@ -72,7 +72,8 @@
       "installerHeaderIcon": "setup_icon.ico"
     },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/app_icon.icns"
     },
     "linux": {
       "target": "AppImage"
