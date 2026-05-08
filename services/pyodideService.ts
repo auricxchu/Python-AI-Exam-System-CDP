@@ -66,13 +66,13 @@ async function init(sab, dataSab, indexURL) {
     return String(chunk ?? '');
   };
 
-  // Setup output streams (use write to flush prompt text immediately)
-  const emitOutput = (text, isError = false) => {
-    const payload = isError ? "Error: " + normalizeOutput(text) : normalizeOutput(text);
-    postMessage({ type: 'output', text: payload, sessionId: currentSessionId });
-  };
-  pyodide.setStdout({ batched: (text) => emitOutput(text) });
-  pyodide.setStderr({ batched: (text) => emitOutput(text, true) });
+  // Setup output streams — Pyodide 0.25 uses { raw: fn } for per-write callbacks
+  pyodide.setStdout({ raw: (text) => {
+    postMessage({ type: 'output', text: normalizeOutput(text), sessionId: currentSessionId });
+  }});
+  pyodide.setStderr({ raw: (text) => {
+    postMessage({ type: 'output', text: "Error: " + normalizeOutput(text), sessionId: currentSessionId });
+  }});
 
   // Setup blocking input mechanism using Atomics
   pyodide.setStdin({
@@ -418,8 +418,8 @@ export const runPythonCodeLocal = async (
 
     // Configure streams for this run
     // Use write to show prompt text immediately (no newline buffering)
-    mainPyodide.setStdout({ batched: (text: any) => onOutput(normalizeOutput(text)) });
-    mainPyodide.setStderr({ batched: (text: any) => onOutput("Error: " + normalizeOutput(text)) });
+    mainPyodide.setStdout({ raw: (text: any) => onOutput(normalizeOutput(text)) });
+    mainPyodide.setStderr({ raw: (text: any) => onOutput("Error: " + normalizeOutput(text)) });
     
     // Fallback: Use window.prompt because main thread cannot block asynchronously without prompt()
     mainPyodide.setStdin({
