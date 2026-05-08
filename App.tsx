@@ -28,6 +28,11 @@ type StudentLoginForm = HTMLFormElement & {
   accessKey?: HTMLInputElement;
 };
 
+const getLandingScale = () => {
+  const vh = window.innerHeight;
+  return Math.min(1, (vh - 80) / 950);
+};
+
 const LOCAL_RUNTIME_ASSET_PATHS = [
   'pyodide/pyodide.js',
   'monaco/vs/loader.js'
@@ -46,6 +51,7 @@ export default function App() {
     localStorage.getItem(OPENING_SEEN_KEY) === '1' ? 'lite' : 'full'
   ));
   const [landingAnimKey, setLandingAnimKey] = useState(0);
+  const [landingScale, setLandingScale] = useState(getLandingScale);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem('app_theme');
     return stored === 'dark' ? 'dark' : 'light';
@@ -69,7 +75,6 @@ export default function App() {
   });
   const [isCheckingProviders, setIsCheckingProviders] = useState(false);
   const modelWheelRef = useRef<HTMLDivElement | null>(null);
-  const landingContentRef = useRef<HTMLDivElement | null>(null);
   const aiProviderRef = useRef<AiProvider>(aiProvider);
   const [aiGuardOpen, setAiGuardOpen] = useState(false);
   const [aiGuardNextMode, setAiGuardNextMode] = useState<AppMode | null>(null);
@@ -131,19 +136,13 @@ export default function App() {
     }
   }, [openingDone, mode]);
 
-  // Scale landing content to fit viewport height without scrolling
   useEffect(() => {
-    const applyScale = () => {
-      if (!landingContentRef.current) return;
-      const vh = window.innerHeight;
-      const scale = Math.min(1, (vh - 80) / 950);
-      landingContentRef.current.style.transform = `scale(${scale})`;
-      landingContentRef.current.style.transformOrigin = 'top center';
+    const handleResize = () => {
+      setLandingScale(getLandingScale());
     };
-    applyScale();
-    window.addEventListener('resize', applyScale);
-    return () => window.removeEventListener('resize', applyScale);
-  }, [openingDone]);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     aiProviderRef.current = aiProvider;
@@ -613,7 +612,11 @@ const requestEnterMode = (nextMode: AppMode) => {
         <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{aiGuardMessage}</p>
       </Modal>
 
-      <div ref={landingContentRef} key={`landing-${landingAnimKey}`} className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}>
+      <div
+        key={`landing-${landingAnimKey}`}
+        className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}
+        style={{ transform: `scale(${landingScale})`, transformOrigin: 'top center' }}
+      >
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           {mode === 'landing' && (
             <>
