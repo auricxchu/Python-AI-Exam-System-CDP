@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Cross-platform & Bugfix Sprint (Claude Code)
+## Unreleased — Cross-platform & Bugfix Sprint
 
-*Contributed by Claude Code (Deepseek-v4-pro)*
+*Bug 修复与交叉审查由 Claude Code (Deepseek-v4-pro) 与 Codex 协同完成；反馈工单由 Zhipu GLM-5.1 实现*
 
 - **Cross-platform support**: remove Windows-only IME helper entirely; switch from fullscreen to borderless maximized window so the native OS taskbar (and its IME toolbar) stays visible during exams. macOS and Linux can now build and package without Windows dependencies.
 - **Add macOS app icon**: generate `app_icon.icns` from PNG source and wire it into the electron-builder macOS config.

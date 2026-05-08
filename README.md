@@ -88,8 +88,9 @@ npm run dist    # 全平台打包
 
 ## Credits / 说明
 
-- This project was originally built with Codex and Gemini (AI Studio).
-- Bug fixes, cross-platform support, and responsive layout improvements by Claude Code (Deepseek-v4-pro).
-
-- 本项目最初由 Codex 与 Gemini（AI Studio）协作完成。
-- Bug 修复、跨平台适配和响应式布局改进由 Claude Code (Deepseek-v4-pro) 完成。
+| 角色 | 贡献 | 模型 |
+|------|------|------|
+| 框架构建 & 设计系统 | 初始项目架构、设计风格确认 | Gemini (AI Studio) |
+| 功能实现 & 优化 | 大部分功能的编码、迭代与性能优化 | Codex (GPT-5.3 / 5.4 / 5.5) |
+| Bug 修复 & 交叉审查 | 多轮 Bug 修复、代码交叉审查、边缘条件优化 | Claude Code (Deepseek-v4-pro) + Codex |
+| 反馈工单 | 反馈功能模块 | Zhipu GLM-5.1 |
