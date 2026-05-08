@@ -380,7 +380,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
     // Check Supabase backend reachability if configured
     if (SUPABASE_URL) {
-      const supabaseOk = await probe(SUPABASE_URL, { method: 'HEAD' });
+      const supabaseOk = await probe(SUPABASE_URL, { method: 'HEAD', mode: 'no-cors' });
       if (!supabaseOk) return false;
     }
 
