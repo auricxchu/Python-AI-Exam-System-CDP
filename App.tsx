@@ -870,7 +870,7 @@ const requestEnterMode = (nextMode: AppMode) => {
       </div>
       {mode === 'landing' && (
         <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-600 text-[7px] sm:text-[9px] tracking-wide text-center pointer-events-none z-30">
-          &copy; 2024 Python Exam System. All Rights Reserved.
+          &copy; 2026 朱文皓 &amp; 文静. All Rights Reserved.
         </div>
       )}
     </div>

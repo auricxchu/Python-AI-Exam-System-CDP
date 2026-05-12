@@ -68,6 +68,7 @@ const TRIGGER_MAP: Record<number, number> = { 11: 1, 14: 2, 17: 3, 18: 4 };
 interface TypingRunnerProps {
   theme: ThemeMode;
   onLineChange: (line: number) => void;
+  onCursorColumnChange: (column: number) => void;
   onStepChange: (step: number) => void;
   onEditorExit: (value: boolean) => void;
   onReady: () => void;
@@ -80,6 +81,7 @@ interface TypingRunnerProps {
 const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
   theme,
   onLineChange,
+  onCursorColumnChange,
   onStepChange,
   onEditorExit,
   onReady,
@@ -89,7 +91,6 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
   onComplete
 }) => {
   const codeRef = useRef<HTMLSpanElement>(null);
-  const aliveRef = useRef(true);
 
   const getColor = (type: TokenType) => {
     if (theme === 'light') {
@@ -117,13 +118,15 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
   };
 
   useEffect(() => {
-    aliveRef.current = true;
+    let alive = true;
     const runTypingSequence = async () => {
       let currentHtml = '';
       let currentLine = 1;
+      let currentColumn = 0;
       let readyShown = false;
 
       await sleep(OPENING_TIMING.full.initialDelayMs);
+      if (!alive) return;
       if (codeRef.current) codeRef.current.innerHTML = '';
 
       onPrelude(true);
@@ -131,8 +134,9 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
       const preludeColor = getColor('default');
 
       for (let i = 0; i < prelude.length; i += 1) {
-        if (!aliveRef.current) return;
+        if (!alive) return;
         const partial = prelude.slice(0, i + 1);
+        onCursorColumnChange(i + 1);
         onPreludeText(partial);
         if (codeRef.current) {
           codeRef.current.innerHTML = `<span style="color: ${preludeColor}">${partial}</span>`;
@@ -143,8 +147,9 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
       await sleep(OPENING_TIMING.full.preludeHoldMs);
 
       for (let i = prelude.length; i >= 0; i -= 1) {
-        if (!aliveRef.current) return;
+        if (!alive) return;
         const partial = prelude.slice(0, i);
+        onCursorColumnChange(i);
         onPreludeText(partial);
         if (codeRef.current) {
           codeRef.current.innerHTML = partial
@@ -157,13 +162,16 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
       await sleep(OPENING_TIMING.full.preludeGapMs);
       onPreludeText('');
       onPrelude(false);
+      onCursorColumnChange(0);
 
       for (const token of TYPING_TOKENS) {
-        if (!aliveRef.current) return;
+        if (!alive) return;
         if (token.type === 'newline') {
           currentHtml += '\n';
           currentLine += 1;
+          currentColumn = 0;
           onLineChange(currentLine);
+          onCursorColumnChange(currentColumn);
           if (codeRef.current) codeRef.current.innerHTML = currentHtml;
 
           if (TRIGGER_MAP[currentLine]) {
@@ -190,8 +198,9 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
         const chars = t.text.split('');
 
         for (let i = 0; i < chars.length; i += 1) {
-          if (!aliveRef.current) return;
+          if (!alive) return;
           const partial = chars.slice(0, i + 1).join('');
+          onCursorColumnChange(currentColumn + i + 1);
           if (codeRef.current) {
             codeRef.current.innerHTML = currentHtml + `<span style="color: ${color}">${partial}</span>`;
           }
@@ -199,29 +208,30 @@ const TypingRunner: React.FC<TypingRunnerProps> = React.memo(({
         }
 
         currentHtml += `<span style="color: ${color}">${t.text}</span>`;
+        currentColumn += t.text.length;
       }
 
       await sleep(OPENING_TIMING.full.postTypingDelayMs);
-      if (!aliveRef.current) return;
+      if (!alive) return;
       if (!readyShown) {
         onReady();
       }
       await sleep(OPENING_TIMING.full.readyHoldMs);
-      if (!aliveRef.current) return;
+      if (!alive) return;
       onEditorExit(true);
       await sleep(OPENING_TIMING.full.editorExitMs);
-      if (!aliveRef.current) return;
+      if (!alive) return;
       onFadeOut(true);
       await sleep(OPENING_TIMING.fadeOutMs);
-      if (!aliveRef.current) return;
+      if (!alive) return;
       onComplete();
     };
 
     runTypingSequence();
     return () => {
-      aliveRef.current = false;
+      alive = false;
     };
-  }, [theme, onLineChange, onStepChange, onEditorExit, onReady, onFadeOut, onPrelude, onPreludeText, onComplete]);
+  }, [theme, onLineChange, onCursorColumnChange, onStepChange, onEditorExit, onReady, onFadeOut, onPrelude, onPreludeText, onComplete]);
 
   return <span ref={codeRef} style={{ minHeight: '200px', display: 'inline-block' }} />;
 });
@@ -236,6 +246,7 @@ interface OpeningScreenProps {
 const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme = 'dark', variant = 'full' }) => {
   const [editorExiting, setEditorExiting] = useState(false);
   const [currentLineIndex, setCurrentLineIndex] = useState(1);
+  const [currentColumnIndex, setCurrentColumnIndex] = useState(0);
   const [visualStep, setVisualStep] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
@@ -269,6 +280,10 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
 
   const handleComplete = useCallback(() => {
     onCompleteRef.current?.();
+  }, []);
+
+  const handleReady = useCallback(() => {
+    setShowCopy(true);
   }, []);
 
   useEffect(() => {
@@ -341,9 +356,19 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
           </div>
         ) : (
           <>
-            <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-              <div className={`relative z-10 w-96 h-96 flex flex-col items-center justify-center opening-logo-wrap ${editorExiting ? 'is-exiting' : ''}`} data-step={visualStep}>
-                <Icon name="jn-logo" className="w-64 h-64 relative z-20 opening-logo-solid" />
+            <div className="absolute inset-0 grid place-items-center overflow-hidden pointer-events-none">
+              <div className="flex flex-col items-center justify-center w-full max-w-[720px] text-center">
+                <div className={`relative z-10 w-96 flex flex-col items-center justify-center opening-logo-wrap ${editorExiting ? 'is-exiting' : ''}`} data-step={visualStep}>
+                  <Icon name="jn-logo" className="w-64 h-64 relative z-20 opening-logo-solid" />
+                </div>
+
+                {showCopy && (
+                  <div className="opening-full-copy">
+                    <div className="opening-subtitle opening-subtitle--copy whitespace-nowrap">
+                      An Experienmental AI x Design Nexus Studio
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -352,23 +377,6 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
                 <div className="text-lg md:text-xl font-mono tracking-[0.18em] opening-prelude">
                   {preludeText.replace('👋', '').trimEnd()}
                   {preludeText.includes('👋') && <span className="opening-prelude__emoji">👋</span>}
-                </div>
-              </div>
-            )}
-
-            {showCopy && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="opening-full-copy">
-                  <h1 className="opening-title">Python 智能考试系统</h1>
-                  <p className="opening-tagline">基于 AI 的自动化测评与管理平台</p>
-                  <div className="opening-subtitle opening-subtitle--copy whitespace-nowrap">
-                    An Experienmental AI x Design Nexus Studio
-                  </div>
-                  {!fadeOut && (
-                    <div className="text-[11px] md:text-xs font-sans tracking-[0.25em] uppercase opening-status mt-6">
-                      {initSteps[initIndex]}
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -410,16 +418,23 @@ const OpeningScreen: React.FC<OpeningScreenProps> = ({ onComplete, onInit, theme
                     <TypingRunner
                       theme={theme}
                       onLineChange={setCurrentLineIndex}
+                      onCursorColumnChange={setCurrentColumnIndex}
                       onStepChange={setVisualStep}
                       onEditorExit={setEditorExiting}
-                      onReady={() => setShowCopy(true)}
+                      onReady={handleReady}
                       onFadeOut={setFadeOut}
                       onPrelude={setShowPrelude}
                       onPreludeText={setPreludeText}
                       onComplete={handleComplete}
                     />
-                    <span className="inline-block w-2 h-4 animate-pulse align-middle ml-0.5 opening-editor__caret" />
                   </div>
+                  <span
+                    className="absolute z-20 block w-2 h-4 animate-pulse opening-editor__caret"
+                    style={{
+                      top: `calc(${(currentLineIndex - 1) * 1.5}rem + 0.25rem)`,
+                      left: `calc(2.5rem + ${currentColumnIndex}ch + 0.125rem)`
+                    }}
+                  />
                 </div>
               </div>
             </div>

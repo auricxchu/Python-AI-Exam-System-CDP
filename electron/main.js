@@ -208,6 +208,14 @@ function createWindow() {
     refocusSecureWindow(win);
   });
 
+  // DevTools shortcut (F12 or Ctrl+Shift+I) for debugging
+  win.webContents.on('before-input-event', (event, input) => {
+    if ((input.key === 'F12' && input.type === 'keyDown')
+      || (input.key === 'I' && input.control && input.shift && input.type === 'keyDown')) {
+      win.webContents.toggleDevTools();
+    }
+  });
+
   win.webContents.on('before-input-event', (event, input) => {
     if (!secureExamMode || input.type !== 'keyDown') return;
     if (!shouldBlockExamShortcut(input)) return;

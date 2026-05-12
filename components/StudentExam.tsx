@@ -10,6 +10,7 @@ import TerminalOutput from './TerminalOutput';
 import Modal from './Modal';
 import ImageModal from './ImageModal'; // Import ImageModal
 import CachedImage from './CachedImage';
+import CodeDiffViewer from './CodeDiffViewer';
 import { gradeQuestion, AiProvider, buildExamReviewSummary, createBlankGradingResult, generateReferenceAnswer } from '../services/aiService';
 import { runPythonCodeLocal, initPyodide, resetPyodideWorker, abortPyodideRun, resetPyodideRuntime } from '../services/pyodideService';
 import { cloudService } from '../services/cloudService';
@@ -53,6 +54,13 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [reportExportMeta, setReportExportMeta] = useState<{ filename: string; content: string } | null>(null);
   const [desktopExportStatus, setDesktopExportStatus] = useState<{ success: boolean; path?: string; error?: string; auto?: boolean } | null>(null);
   const [isExportingReport, setIsExportingReport] = useState(false);
+
+  // Exam result page scaling (1920×1080 reference)
+  const EXAM_RESULT_WIDTH = 1920;
+  const EXAM_RESULT_HEIGHT = 1080;
+  const getExamResultScale = () => Math.min(1, window.innerWidth / EXAM_RESULT_WIDTH, window.innerHeight / EXAM_RESULT_HEIGHT);
+  const [examResultScale, setExamResultScale] = useState(getExamResultScale);
+
   const providerLabel = (value: AiProvider) => {
     switch (value) {
       case 'deepseek':
@@ -114,6 +122,12 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     questions.forEach(q => initialAnswers[q.id] = q.template);
     setAnswers(initialAnswers);
   }, [questions]);
+
+  useEffect(() => {
+    const handleResize = () => setExamResultScale(getExamResultScale());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const currentQ = questions[currentIdx];
   const currentKey = `${currentQ.id}__${currentIdx}`;
@@ -823,19 +837,17 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   if (examFinished) {
     const isLightTheme = theme === 'light';
     const pageClass = isLightTheme
-      ? 'min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-100 p-4 sm:p-6 xl:p-8 font-sans text-slate-900 flex flex-col items-center justify-start relative overflow-y-auto'
-      : 'min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-4 sm:p-6 xl:p-8 font-sans text-slate-200 flex flex-col items-center justify-start relative overflow-y-auto';
-    const shellClass = 'max-w-[1780px] w-full relative z-10 animate-in fade-in zoom-in-95 duration-500';
-    const asideClass = 'w-full max-w-[430px]';
+      ? 'h-screen w-full bg-gradient-to-br from-slate-100 via-white to-blue-100 font-sans text-slate-900 overflow-hidden relative'
+      : 'h-screen w-full bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] font-sans text-slate-200 overflow-hidden relative';
     const asideCardClass = isLightTheme
-      ? 'rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.10)] p-8 xl:p-9'
-      : 'rounded-3xl border border-slate-700/80 bg-slate-950/65 shadow-[0_18px_48px_rgba(2,6,23,0.35)] p-8 xl:p-9';
+      ? 'rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.10)] p-8'
+      : 'rounded-3xl border border-slate-700/80 bg-slate-950/65 shadow-[0_18px_48px_rgba(2,6,23,0.35)] p-8';
     const rightCardClass = isLightTheme
-      ? 'rounded-[28px] border border-slate-200 bg-white/90 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-md overflow-hidden'
-      : 'rounded-[28px] border border-slate-700/50 bg-slate-900/80 shadow-2xl backdrop-blur-md overflow-hidden';
+      ? 'rounded-[28px] border border-slate-200 bg-white/90 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-md overflow-hidden flex-1 flex flex-col min-h-0'
+      : 'rounded-[28px] border border-slate-700/50 bg-slate-900/80 shadow-2xl backdrop-blur-md overflow-hidden flex-1 flex flex-col min-h-0';
     const rightPaneClass = isLightTheme
-      ? 'p-6 xl:p-8 max-h-[calc(100vh-96px)] overflow-y-auto custom-scrollbar bg-slate-50/70'
-      : 'p-6 xl:p-8 max-h-[calc(100vh-96px)] overflow-y-auto custom-scrollbar bg-slate-900/30';
+      ? 'p-8 overflow-y-auto custom-scrollbar bg-slate-50/70 flex-1'
+      : 'p-8 overflow-y-auto custom-scrollbar bg-slate-900/30 flex-1';
     const softPanelClass = isLightTheme
       ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]'
       : 'rounded-2xl border border-slate-700/80 bg-slate-800/55';
@@ -859,8 +871,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)] overflow-hidden transition-colors hover:border-slate-300'
       : 'rounded-2xl border border-slate-700/80 bg-slate-800/55 overflow-hidden transition-colors hover:border-slate-600';
     const resultHeaderClass = isLightTheme
-      ? 'w-full flex flex-col gap-4 px-5 py-4 text-left lg:flex-row lg:items-start lg:justify-between'
-      : 'w-full flex flex-col gap-4 px-5 py-4 text-left lg:flex-row lg:items-start lg:justify-between';
+      ? 'w-full flex flex-row gap-4 px-5 py-4 text-left items-start justify-between'
+      : 'w-full flex flex-row gap-4 px-5 py-4 text-left items-start justify-between';
     const resultDividerClass = isLightTheme
       ? 'border-t border-slate-200 pt-5'
       : 'border-t border-slate-800/80 pt-5';
@@ -1016,17 +1028,19 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           onClose={() => setPreviewImage(null)}
         />
 
-        <div className={shellClass}>
-          <div className="grid gap-4 sm:gap-6 xl:gap-8 lg:grid-cols-[minmax(360px,430px)_minmax(0,1fr)]">
-            <div className={`${asideClass} flex flex-col`}>
+        {/* Scaled content canvas */}
+        <div style={{ width: EXAM_RESULT_WIDTH, height: EXAM_RESULT_HEIGHT, position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${examResultScale})` }} className="animate-in fade-in zoom-in-95 duration-500">
+          <div className="h-full p-8 flex gap-6">
+            {/* Left column */}
+            <div className="w-[430px] shrink-0 flex flex-col overflow-y-auto custom-scrollbar">
               <div className={asideCardClass}>
                 <div className="text-center">
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
-                  <h2 className={`text-xl sm:text-2xl md:text-3xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
+                  <h2 className={`text-2xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
                   <p className={textMutedClass}>考试信息与最终得分</p>
-                  <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
+                  <div className="text-5xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
                 </div>
 
                 <div className="report-info-grid">
@@ -1140,6 +1154,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
               </div>
             </div>
 
+            {/* Right column — review summary + per-question results */}
             <div className={rightCardClass}>
               <div className={rightPaneClass}>
                 {reviewSummary && (
@@ -1220,7 +1235,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           </div>
                         </div>
                       </div>
-                      <div className="pl-10 lg:pl-4 text-right">
+                      <div className="pl-4 text-right">
                         <div className={`flex items-end justify-end gap-1 font-bold leading-none ${scoreClass(res.passed)}`}>
                           <span className="text-[2rem]">{formatScoreDisplay(pts)}</span>
                           <span className="text-[1.35rem] leading-none translate-y-[-1px]">分</span>
@@ -1301,7 +1316,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                             </div>
                           )}
 
-                          <div className="grid xl:grid-cols-3 gap-4 text-sm">
+                          <div className="grid grid-cols-3 gap-4 text-sm">
                             <div className={`${strengthTone.panel} p-4 rounded-xl border`}>
                               <span className={`${strengthTone.title} font-bold block mb-2`}>做得好的地方</span>
                               <p className={`${summaryListClass} leading-relaxed`}>{res.summary.highlights}</p>
@@ -1317,14 +1332,45 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           </div>
 
                           <div className="space-y-4">
-                            <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
-                              <span className={`font-bold block ${textPrimaryClass}`}>考生作答</span>
-                              <pre className={codeBlockClass}>{studentAnswer}</pre>
-                            </div>
-                            <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
-                              <span className={`font-bold block ${textPrimaryClass}`}>AI 修正版参考答案</span>
-                              <pre className={codeBlockClass}>{res.correctedAnswer || '当前未生成 AI 修正版参考答案。'}</pre>
-                            </div>
+                            {res.correctedAnswer ? (
+                              (() => {
+                                const normalizedStudent = (studentAnswer ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+                                const normalizedCorrected = (res.correctedAnswer ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+                                const isIdentical = normalizedStudent === normalizedCorrected;
+                                return isIdentical ? (
+                                  <div className={`p-4 rounded-xl border ${isLightTheme ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                                    <span className={`font-bold block mb-3 ${textPrimaryClass}`}>考生作答 vs AI 参考答案</span>
+                                    <div className={`flex items-center gap-2 text-sm mb-3 ${isLightTheme ? 'text-emerald-700' : 'text-emerald-300'}`}>
+                                      <CheckCircle className="w-4 h-4" /> 答案与参考答案完全一致
+                                    </div>
+                                    <pre className={codeBlockClass}>{studentAnswer}</pre>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <CodeDiffViewer
+                                      original={studentAnswer}
+                                      modified={res.correctedAnswer}
+                                      theme={theme}
+                                    />
+                                    <div className="flex mt-1.5">
+                                      <span className={`flex-1 text-center text-[11px] ${isLightTheme ? 'text-slate-400' : 'text-slate-500'}`}>你的作答</span>
+                                      <span className={`flex-1 text-center text-[11px] ${isLightTheme ? 'text-slate-400' : 'text-slate-500'}`}>AI 参考答案</span>
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <>
+                                <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
+                                  <span className={`font-bold block ${textPrimaryClass}`}>考生作答</span>
+                                  <pre className={codeBlockClass}>{studentAnswer}</pre>
+                                </div>
+                                <div className={`${isLightTheme ? 'bg-white/90 border-slate-200' : 'bg-slate-900/70 border-slate-800'} p-4 rounded-xl border`}>
+                                  <span className={`font-bold block ${textPrimaryClass}`}>AI 修正版参考答案</span>
+                                  <pre className={codeBlockClass}>当前未生成 AI 修正版参考答案。</pre>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}

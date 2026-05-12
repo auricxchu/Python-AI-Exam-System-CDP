@@ -21,6 +21,7 @@ supabase/.temp/
 .vscode/*
 !.vscode/extensions.json
 .idea
+open-claude.sh
 .DS_Store
 *.suo
 *.ntvs*

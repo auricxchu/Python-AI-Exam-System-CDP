@@ -1,14 +1,8 @@
 
 import React from 'react';
-import Editor, { loader } from "@monaco-editor/react";
+import Editor from "@monaco-editor/react";
 import { Play, Loader2 } from 'lucide-react';
-
-const monacoBaseUrl = new URL('monaco/vs', window.location.href).toString();
-loader.config({
-  paths: {
-    vs: monacoBaseUrl
-  }
-});
+import '../services/monacoSetup';
 
 interface CodeEditorProps {
   code: string;

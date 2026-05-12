@@ -1047,6 +1047,10 @@ body.splitter-dragging .splitter-horizontal {
   background: #60a5fa;
 }
 
+.opening-editor__caret {
+  pointer-events: none;
+}
+
 .opening-theme-dark .opening-status {
   color: rgba(148, 163, 184, 0.9);
 }
@@ -1062,10 +1066,6 @@ body.splitter-dragging .splitter-horizontal {
 .opening-theme-dark .opening-logo {
   background: #0f172a;
   border-color: #334155;
-}
-
-.opening-theme-dark .opening-title {
-  color: #ffffff;
 }
 
 .opening-theme-dark .opening-terminal {
@@ -1187,17 +1187,12 @@ body.splitter-dragging .splitter-horizontal {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.9rem;
-  margin-top: 16rem;
+  width: 100%;
+  max-width: 720px;
   text-align: center;
-  pointer-events: none;
-}
-
-.opening-tagline {
-  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-  font-size: 1.05rem;
-  letter-spacing: 0.04em;
-  opacity: 0.72;
+  transform: translateY(0);
 }
 
 .opening-lite-stack {
@@ -1238,6 +1233,11 @@ body.splitter-dragging .splitter-horizontal {
   top: auto;
   left: auto;
   font-size: 1.15rem;
+  letter-spacing: 0.18em;
+  opacity: 1;
+  align-self: center;
+  text-align: center;
+  animation: subtitleRevealLite 0.9s ease-out forwards, metallicSweep 3.2s ease-in-out infinite;
 }
 
 .opening-theme-light .opening-subtitle {
@@ -1269,18 +1269,6 @@ body.splitter-dragging .splitter-horizontal {
   background: #ffffff;
   border-color: #cbd5f5;
   color: #2563eb;
-}
-
-.opening-theme-light .opening-title {
-  color: #0f172a;
-}
-
-.opening-theme-light .opening-tagline {
-  color: rgba(71, 85, 105, 0.9);
-}
-
-.opening-theme-dark .opening-tagline {
-  color: rgba(148, 163, 184, 0.9);
 }
 
 .opening-theme-light .opening-terminal {
