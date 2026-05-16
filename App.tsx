@@ -28,11 +28,6 @@ type StudentLoginForm = HTMLFormElement & {
   accessKey?: HTMLInputElement;
 };
 
-const getLandingScale = () => {
-  const vh = window.innerHeight;
-  return Math.min(1, (vh - 80) / 950);
-};
-
 const LOCAL_RUNTIME_ASSET_PATHS = [
   'pyodide/pyodide.js',
   'monaco/vs/loader.js'
@@ -51,7 +46,6 @@ export default function App() {
     localStorage.getItem(OPENING_SEEN_KEY) === '1' ? 'lite' : 'full'
   ));
   const [landingAnimKey, setLandingAnimKey] = useState(0);
-  const [landingScale, setLandingScale] = useState(getLandingScale);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem('app_theme');
     return stored === 'dark' ? 'dark' : 'light';
@@ -135,14 +129,6 @@ export default function App() {
       setLandingAnimKey((prev) => prev + 1);
     }
   }, [openingDone, mode]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setLandingScale(getLandingScale());
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   useEffect(() => {
     aiProviderRef.current = aiProvider;
@@ -562,7 +548,7 @@ const requestEnterMode = (nextMode: AppMode) => {
           onComplete={handleOpeningComplete}
         />
       )}
-      <div className="landing-shell min-h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col items-center justify-center px-4 sm:px-6 pt-8 sm:pt-12 md:pt-16 pb-8 relative overflow-hidden font-sans text-slate-200">
+      <div className="landing-shell h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] flex flex-col relative overflow-hidden font-sans text-slate-200">
       {/* Background FX */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
          <div className="landing-orb landing-orb--a" />
@@ -614,22 +600,21 @@ const requestEnterMode = (nextMode: AppMode) => {
 
       <div
         key={`landing-${landingAnimKey}`}
-        className={`landing-content pt-8 pb-12 sm:pt-16 sm:pb-20 md:pt-24 md:pb-28 ${!openingDone ? 'landing-content--hidden' : ''}`}
-        style={{ transform: `scale(${landingScale})`, transformOrigin: 'top center' }}
+        className={`landing-content flex-1 min-h-0 w-full flex flex-col items-center justify-center px-4 sm:px-6 py-4 ${!openingDone ? 'landing-content--hidden' : ''}`}
       >
-        <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
+        <div className="relative z-10 w-full max-w-5xl flex flex-col items-center" style={{ gap: 'var(--landing-gap)' }}>
           {mode === 'landing' && (
             <>
-              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl mb-4 sm:mb-8 border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl">
-                 <Code className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-blue-400" />
+              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl" style={{ marginBottom: 'var(--landing-hero-mb)' }}>
+                 <Code className="text-blue-400" style={{ width: 'var(--landing-icon-size)', height: 'var(--landing-icon-size)' }} />
               </div>
-              <h1 className="landing-reveal landing-delay-2 text-2xl sm:text-3xl md:text-5xl font-bold text-white mb-2 sm:mb-3 text-center tracking-tight drop-shadow-lg">
+              <h1 className="landing-reveal landing-delay-2 font-bold text-white text-center tracking-tight drop-shadow-lg" style={{ fontSize: 'var(--landing-title-size)' }}>
                 Python 智能考试系统
               </h1>
-              <p className="landing-reveal landing-delay-3 text-slate-400 text-sm sm:text-base md:text-lg mb-6 sm:mb-10 md:mb-16 text-center max-w-2xl">
+              <p className="landing-reveal landing-delay-3 text-slate-400 text-center max-w-2xl" style={{ fontSize: 'var(--landing-subtitle-size)' }}>
                 基于 AI 的自动化测评与管理平台
               </p>
-              <div className="landing-reveal landing-delay-4 w-full max-w-4xl mb-4 sm:mb-6 md:mb-10">
+              <div className="landing-reveal landing-delay-4 w-full max-w-4xl" style={{ marginBottom: 'var(--landing-model-picker-mb)' }}>
                 <div className="model-picker">
                   <div className="model-picker__header">
                     <div className="model-picker__title">{modelSelectorCopy.title}</div>
@@ -710,10 +695,10 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                 </div>
               </div>
-              <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full max-w-4xl mb-6 sm:mb-10 md:mb-12">
+              <div className="landing-reveal landing-delay-5 grid md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full max-w-4xl" style={{ marginBottom: 'var(--landing-card-grid-mb)' }}>
                 <button
                   onClick={() => requestEnterMode('student_login')}
-                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl p-5 sm:p-8 md:p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm"
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-blue-500/50 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/20 text-left overflow-hidden backdrop-blur-sm" style={{ padding: 'var(--landing-card-padding)' }}
                 >
                   <div className="flex justify-between items-start mb-4 sm:mb-8">
                      <div className="bg-blue-900/20 p-3 sm:p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-blue-500/20">
@@ -730,7 +715,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
                 <button
                   onClick={() => requestEnterMode('teacher_login')}
-                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl p-5 sm:p-8 md:p-10 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm"
+                  className="group relative bg-slate-900/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/50 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-purple-900/20 text-left overflow-hidden backdrop-blur-sm" style={{ padding: 'var(--landing-card-padding)' }}
                 >
                   <div className="flex justify-between items-start mb-4 sm:mb-8">
                      <div className="bg-purple-900/20 p-3 sm:p-4 rounded-xl group-hover:scale-110 transition-transform ring-1 ring-purple-500/20">
@@ -748,7 +733,7 @@ const requestEnterMode = (nextMode: AppMode) => {
               
               {/* System Exit Button (Flow Layout, No Overlap) */}
               <div className="landing-reveal landing-delay-6 z-20 mt-2 sm:mt-4">
-                 <button 
+                 <button
                    onClick={handleSystemExit}
                    className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
                  >
@@ -756,13 +741,16 @@ const requestEnterMode = (nextMode: AppMode) => {
                     <span className="text-sm font-medium">退出系统</span>
                  </button>
               </div>
+              <div className="landing-reveal landing-delay-6 text-slate-600 text-[10px] sm:text-xs tracking-wide text-center mt-2">
+                &copy; 2026 朱文皓 &amp; 文静. All Rights Reserved.
+              </div>
             </>
           )}
 
           {mode === 'teacher_login' && (
-           <div className="w-full flex justify-center min-h-[70vh] items-center">
-            <div className="w-full max-w-5xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-[1.05fr_0.95fr] animate-in fade-in zoom-in-95 duration-300">
-              <div className="p-10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-blue-950/40 border-b md:border-b-0 md:border-r border-slate-800">
+           <div className="w-full flex justify-center items-center min-h-0">
+            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
+              <div className="bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-blue-950/40 border-b md:border-b-0 md:border-r border-slate-800" style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
                     <Monitor className="w-6 h-6 text-blue-400" />
@@ -790,7 +778,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                 </div>
               </div>
-              <div className="p-10">
+              <div style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="mb-8">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="w-4 h-4 text-blue-400" /> 登录验证</h3>
                 </div>
@@ -816,9 +804,9 @@ const requestEnterMode = (nextMode: AppMode) => {
         )}
 
         {mode === 'student_login' && (
-           <div className="w-full flex justify-center min-h-[70vh] items-center">
-            <div className="w-full max-w-5xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-[1.05fr_0.95fr] animate-in fade-in zoom-in-95 duration-300">
-              <div className="p-10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-indigo-950/40 border-b md:border-b-0 md:border-r border-slate-800">
+           <div className="w-full flex justify-center items-center min-h-0">
+            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
+              <div className="bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-indigo-950/40 border-b md:border-b-0 md:border-r border-slate-800" style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
                     <GraduationCap className="w-6 h-6 text-blue-400" />
@@ -845,7 +833,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                 </div>
               </div>
-              <div className="p-10">
+              <div style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="text-sm font-semibold text-slate-300 mb-6 flex items-center gap-2">
                   <Key className="w-4 h-4 text-blue-400" /> 资料填写
                 </div>
@@ -868,11 +856,6 @@ const requestEnterMode = (nextMode: AppMode) => {
         )}
         </div>
       </div>
-      {mode === 'landing' && (
-        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-600 text-[7px] sm:text-[9px] tracking-wide text-center pointer-events-none z-30">
-          &copy; 2026 朱文皓 &amp; 文静. All Rights Reserved.
-        </div>
-      )}
     </div>
     </>
   );

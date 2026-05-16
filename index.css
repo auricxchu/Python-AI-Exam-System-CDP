@@ -35,6 +35,53 @@
   --splitter-handle: rgba(148, 163, 184, 0.35);
 }
 
+/* ── Height-adaptive layout variables ── */
+/* Default: medium (781px – 950px) */
+:root {
+  --landing-title-size: 2.25rem;
+  --landing-subtitle-size: 1.125rem;
+  --landing-card-padding: 2rem;
+  --landing-gap: 1.25rem;
+  --landing-icon-size: 3rem;
+  --landing-hero-mb: 2rem;
+  --landing-model-picker-mb: 0.75rem;
+  --landing-card-grid-mb: 0.75rem;
+  --login-card-padding: 2rem;
+  --dashboard-gap: 1rem;
+}
+
+/* Compact: ≤780px height (e.g. 1366×768 laptops) */
+@media (max-height: 780px) {
+  :root {
+    --landing-title-size: 1.5rem;
+    --landing-subtitle-size: 0.875rem;
+    --landing-card-padding: 1.25rem;
+    --landing-gap: 0.5rem;
+    --landing-icon-size: 2.5rem;
+    --landing-hero-mb: 0.75rem;
+    --landing-model-picker-mb: 0.25rem;
+    --landing-card-grid-mb: 0.25rem;
+    --login-card-padding: 1.5rem;
+    --dashboard-gap: 0.5rem;
+  }
+}
+
+/* Comfortable: >950px height (1080p+) */
+@media (min-height: 951px) {
+  :root {
+    --landing-title-size: 3rem;
+    --landing-subtitle-size: 1.25rem;
+    --landing-card-padding: 2.5rem;
+    --landing-gap: 1.5rem;
+    --landing-icon-size: 3rem;
+    --landing-hero-mb: 2rem;
+    --landing-model-picker-mb: 1rem;
+    --landing-card-grid-mb: 1rem;
+    --login-card-padding: 2.5rem;
+    --dashboard-gap: 1.5rem;
+  }
+}
+
 body {
   background-color: var(--app-bg);
   color: var(--app-text);

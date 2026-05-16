@@ -50,8 +50,7 @@ export type DeductionCode =
   | "LOG_WRONG"
   | "RUN_VAR"
   | "RUN_TYPE"
-  | "STY_NAME"
-  | "STY_DOC";
+  | "STY_NAME";
 
 export interface DeductionRule {
   code: DeductionCode;

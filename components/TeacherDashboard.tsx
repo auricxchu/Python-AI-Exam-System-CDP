@@ -573,7 +573,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-6 font-sans text-slate-200 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] p-4 sm:p-6 font-sans text-slate-200 flex flex-col overflow-hidden">
 {/* Modals */}
       <Modal 
         isOpen={!!deleteId} 
@@ -785,7 +785,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
         {/* Left Panel: Settings - Scrollable */}
-        <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
+        <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-3 sm:gap-4 lg:gap-6 overflow-hidden pr-2">
            {/* Basic Settings */}
            <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
               <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2"><Settings className="w-4 h-4"/> 基础设置</h3>
@@ -868,7 +868,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
            </div>
 
-           <div className="flex min-h-[420px] flex-col overflow-hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
+           <div className="flex flex-col overflow-hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
              <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
                {localConfig.assemblyMode === 'random' ? '随机抽题设置' : '自由选题设置'}
              </h3>

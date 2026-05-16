@@ -55,12 +55,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [desktopExportStatus, setDesktopExportStatus] = useState<{ success: boolean; path?: string; error?: string; auto?: boolean } | null>(null);
   const [isExportingReport, setIsExportingReport] = useState(false);
 
-  // Exam result page scaling (1920×1080 reference)
-  const EXAM_RESULT_WIDTH = 1920;
-  const EXAM_RESULT_HEIGHT = 1080;
-  const getExamResultScale = () => Math.min(1, window.innerWidth / EXAM_RESULT_WIDTH, window.innerHeight / EXAM_RESULT_HEIGHT);
-  const [examResultScale, setExamResultScale] = useState(getExamResultScale);
-
   const providerLabel = (value: AiProvider) => {
     switch (value) {
       case 'deepseek':
@@ -122,12 +116,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     questions.forEach(q => initialAnswers[q.id] = q.template);
     setAnswers(initialAnswers);
   }, [questions]);
-
-  useEffect(() => {
-    const handleResize = () => setExamResultScale(getExamResultScale());
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const currentQ = questions[currentIdx];
   const currentKey = `${currentQ.id}__${currentIdx}`;
@@ -1028,11 +1016,10 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           onClose={() => setPreviewImage(null)}
         />
 
-        {/* Scaled content canvas */}
-        <div style={{ width: EXAM_RESULT_WIDTH, height: EXAM_RESULT_HEIGHT, position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${examResultScale})` }} className="animate-in fade-in zoom-in-95 duration-500">
-          <div className="h-full p-8 flex gap-6">
-            {/* Left column */}
-            <div className="w-[430px] shrink-0 flex flex-col overflow-y-auto custom-scrollbar">
+        {/* Content layout — fills viewport */}
+        <div className="absolute inset-0 flex gap-4 sm:gap-6 p-4 sm:p-6 md:p-8 animate-in fade-in zoom-in-95 duration-500">
+          {/* Left column — no scroll */}
+          <div className="w-[340px] sm:w-[380px] md:w-[430px] shrink-0 flex flex-col overflow-hidden">
               <div className={asideCardClass}>
                 <div className="text-center">
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
@@ -1381,7 +1368,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                 </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
     );

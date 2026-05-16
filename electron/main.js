@@ -67,10 +67,9 @@ const clearExamWindowPolicy = (win) => {
   secureExamRefocusPending = false;
   win.setAlwaysOnTop(false);
   win.setVisibleOnAllWorkspaces(false);
-  win.setClosable(true);
-  win.setResizable(true);
-  win.setMaximizable(true);
-  win.setMinimizable(true);
+  // Keep closable/minimizable/maximizable disabled — frameless window
+  // must not show traffic-light buttons after exam ends.
+  win.setResizable(false);
   win.setMenuBarVisibility(false);
   win.setAutoHideMenuBar(true);
   // Restore borderless maximized state
