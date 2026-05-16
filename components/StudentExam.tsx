@@ -545,9 +545,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     if (examSummary) {
       lines.push("[阅卷总结]");
       lines.push(`总体评价: ${examSummary.overview}`);
-      lines.push(`做得好的地方: ${examSummary.strengths.join("；")}`);
-      lines.push(`主要问题: ${examSummary.weaknesses.join("；")}`);
-      lines.push(`下一步建议: ${examSummary.nextSteps.join("；")}`);
+      lines.push(`做得好的点: ${examSummary.strengths.join("；")}`);
+      lines.push(`主要失分点: ${examSummary.weaknesses.join("；")}`);
+      lines.push(`下一步提高: ${examSummary.nextSteps.join("；")}`);
       lines.push("================================================================");
     }
     lines.push("");
@@ -569,9 +569,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       } else {
         lines.push("[扣分明细]: 未命中固定扣分标签");
       }
-      lines.push(`[做得好的地方]: ${res.summary.highlights}`);
-      lines.push(`[主要问题]: ${res.summary.mainIssues}`);
-      lines.push(`[下一步建议]: ${res.summary.nextSteps}`);
+      lines.push(`[做得好的点]: ${res.summary.highlights}`);
+      lines.push(`[主要失分点]: ${res.summary.mainIssues}`);
+      lines.push(`[下一步提高]: ${res.summary.nextSteps}`);
       if (res.correctedAnswer) {
         lines.push(`[AI 修正版参考答案]`);
         lines.push(res.correctedAnswer);
@@ -828,16 +828,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       ? 'h-screen w-full bg-gradient-to-br from-slate-100 via-white to-blue-100 font-sans text-slate-900 overflow-hidden relative'
       : 'h-screen w-full bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] font-sans text-slate-200 overflow-hidden relative';
     const asideCardClass = isLightTheme
-      ? 'rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.10)] p-8'
-      : 'rounded-3xl border border-slate-700/80 bg-slate-950/65 shadow-[0_18px_48px_rgba(2,6,23,0.35)] p-8';
+      ? 'rounded-3xl border border-slate-200 bg-white/90 p-8'
+      : 'rounded-3xl border border-slate-700/80 bg-slate-950/65 p-8';
     const rightCardClass = isLightTheme
-      ? 'rounded-[28px] border border-slate-200 bg-white/90 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-md overflow-hidden flex-1 flex flex-col min-h-0'
-      : 'rounded-[28px] border border-slate-700/50 bg-slate-900/80 shadow-2xl backdrop-blur-md overflow-hidden flex-1 flex flex-col min-h-0';
+      ? 'rounded-[28px] border border-slate-200 bg-white/90 overflow-hidden flex-1 flex flex-col min-h-0'
+      : 'rounded-[28px] border border-slate-700/50 bg-slate-900/80 overflow-hidden flex-1 flex flex-col min-h-0';
     const rightPaneClass = isLightTheme
       ? 'p-8 overflow-y-auto custom-scrollbar bg-slate-50/70 flex-1'
       : 'p-8 overflow-y-auto custom-scrollbar bg-slate-900/30 flex-1';
     const softPanelClass = isLightTheme
-      ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]'
+      ? 'rounded-2xl border border-slate-200 bg-white'
       : 'rounded-2xl border border-slate-700/80 bg-slate-800/55';
     const textPrimaryClass = isLightTheme ? 'text-slate-900' : 'text-white';
     const textMutedClass = isLightTheme ? 'text-slate-600' : 'text-slate-400';
@@ -856,11 +856,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         ? 'flex items-center gap-2 text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border border-amber-200'
         : 'flex items-center gap-2 text-xs bg-orange-900/20 text-orange-400 px-3 py-1.5 rounded-full border border-orange-900/50');
     const resultCardClass = isLightTheme
-      ? 'rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)] overflow-hidden transition-colors hover:border-slate-300'
+      ? 'rounded-2xl border border-slate-200 bg-white overflow-hidden transition-colors hover:border-slate-300'
       : 'rounded-2xl border border-slate-700/80 bg-slate-800/55 overflow-hidden transition-colors hover:border-slate-600';
-    const resultHeaderClass = isLightTheme
-      ? 'w-full flex flex-row gap-4 px-5 py-4 text-left items-start justify-between'
-      : 'w-full flex flex-row gap-4 px-5 py-4 text-left items-start justify-between';
     const resultDividerClass = isLightTheme
       ? 'border-t border-slate-200 pt-5'
       : 'border-t border-slate-800/80 pt-5';
@@ -881,8 +878,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         ? (passed ? 'text-emerald-700' : 'text-red-700')
         : (passed ? 'text-green-400' : 'text-red-400');
     const chevronWrapClass = isLightTheme
-      ? 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-500'
-      : 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400';
+      ? 'flex h-5 w-5 shrink-0 items-center justify-center text-slate-500'
+      : 'flex h-5 w-5 shrink-0 items-center justify-center text-slate-400';
     const asideDividerClass = isLightTheme ? 'border-slate-300/80' : 'border-slate-700/80';
     const exportPillClass = desktopExportStatus?.success
       ? (isLightTheme
@@ -1019,14 +1016,14 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         {/* Content layout — fills viewport */}
         <div className="absolute inset-0 flex gap-4 sm:gap-6 p-4 sm:p-6 md:p-8 animate-in fade-in zoom-in-95 duration-500">
           {/* Left column — no scroll */}
-          <div className="w-[340px] sm:w-[380px] md:w-[430px] shrink-0 flex flex-col overflow-hidden">
+          <div className="w-[340px] sm:w-[380px] md:w-[430px] shrink-0 flex flex-col overflow-y-auto custom-scrollbar">
               <div className={asideCardClass}>
                 <div className="text-center">
                   <div className="report-logo inline-block bg-blue-900/30 p-4 rounded-full mb-4 ring-1 ring-blue-500/50">
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
                   <h2 className={`text-2xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
-                  <p className={textMutedClass}>考试信息与最终得分</p>
+                  <p className={textMutedClass}>最终得分</p>
                   <div className="text-5xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
                 </div>
 
@@ -1088,55 +1085,30 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                 </div>
               </div>
 
-              <div className={`pt-6 mt-6 border-t space-y-3 ${asideDividerClass}`}>
-                {/* Row 1: Download Report */}
-                <Button
-                  onClick={() => reportExportMeta && exportReportToDesktop(reportExportMeta.filename, reportExportMeta.content)}
-                  variant="secondary"
-                  isLoading={isExportingReport}
-                  disabled={!reportExportMeta}
-                  className={isLightTheme ? 'w-full h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'w-full h-11 rounded-xl bg-slate-700 hover:bg-slate-600 border-slate-600 text-white shadow-none'}
-                >
-                  <Download className="w-4 h-4"/> 导出成绩单
-                </Button>
-
-                {/* Row 2: Return Home + Exit System */}
+              <div className={`pt-6 mt-6 border-t ${asideDividerClass}`}>
                 <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={() => reportExportMeta && exportReportToDesktop(reportExportMeta.filename, reportExportMeta.content)}
+                    variant="secondary"
+                    isLoading={isExportingReport}
+                    disabled={!reportExportMeta}
+                    className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl bg-slate-700 hover:bg-slate-600 border-slate-600 text-white shadow-none'}
+                  >
+                    <Download className="w-4 h-4"/> 导出成绩单
+                  </Button>
+                  <Button
+                    onClick={() => setFeedbackModalOpen(true)}
+                    variant="secondary"
+                    className={`h-11 rounded-xl shadow-none ${isLightTheme ? 'bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-700' : 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30 text-blue-300'}`}
+                  >
+                    <MessageSquare className="w-4 h-4"/> 反馈问题
+                  </Button>
                   <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl shadow-none'}>
                     <LogOut className="w-4 h-4"/> 返回首页
                   </Button>
                   <Button onClick={handleSafeSystemExit} className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-none">
                     <Power className="w-4 h-4"/> 退出系统
                   </Button>
-                </div>
-              </div>
-
-              {/* Row 3: Feedback Module - pushed to bottom with gap */}
-              <div className="mt-auto pt-8">
-                <div className={`rounded-2xl border p-5 ${isLightTheme ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200' : 'bg-gradient-to-br from-blue-900/20 to-indigo-900/20 border-blue-500/20'}`}>
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className={`shrink-0 p-2 rounded-xl ${isLightTheme ? 'bg-blue-100' : 'bg-blue-500/20'}`}>
-                      <MessageSquare className={`w-5 h-5 ${isLightTheme ? 'text-blue-600' : 'text-blue-400'}`} />
-                    </div>
-                    <div>
-                      <h4 className={`font-bold text-sm ${isLightTheme ? 'text-blue-800' : 'text-blue-300'}`}>遇到问题了吗？</h4>
-                      <p className={`text-xs mt-0.5 leading-relaxed ${isLightTheme ? 'text-blue-600/80' : 'text-blue-400/70'}`}>
-                        有任何疑问或建议？无论是技术问题、成绩疑问，与考试体验相关的任何问题，我们都很乐意倾听。
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => setFeedbackModalOpen(true)}
-                    variant="secondary"
-                    className={`w-full h-10 rounded-xl shadow-none ${isLightTheme ? 'bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-700' : 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30 text-blue-300'}`}
-                  >
-                    <MessageSquare className="w-4 h-4"/> 反馈问题
-                  </Button>
-                  {feedbackStatus && (
-                    <div className={`mt-2 text-center text-xs ${feedbackStatus.success ? (isLightTheme ? 'text-emerald-600' : 'text-emerald-400') : (isLightTheme ? 'text-rose-600' : 'text-rose-400')}`}>
-                      {feedbackStatus.success ? '✓ 反馈已提交，感谢你的声音！' : `反馈提交失败：${feedbackStatus.error || '未知错误'}`}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -1152,7 +1124,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     </div>
                     <div className="space-y-4 text-sm">
                       <div className={`${getSummaryPanelTone('emerald', isLightTheme).panel} rounded-lg border p-4`}>
-                        <span className={`${getSummaryPanelTone('emerald', isLightTheme).title} font-bold block mb-2`}>做得好的地方</span>
+                        <span className={`${getSummaryPanelTone('emerald', isLightTheme).title} font-bold block mb-2`}>做得好的点</span>
                         <ul className={`space-y-2 ${summaryListClass}`}>
                           {reviewSummary.strengths.map((item, idx) => (
                             <li key={`strength-${idx}`} className="leading-relaxed">• {item}</li>
@@ -1201,16 +1173,23 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
                   return (
                     <div key={q.id} className={resultCardClass}>
-                    <button
-                      type="button"
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className={`${chevronWrapClass} absolute left-4 top-1/2 z-10 -translate-y-1/2`}
+                        onClick={() => setExpandedResultId((prev) => prev === q.id ? null : q.id)}
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? '收起题目解析' : '展开题目解析'}
+                      >
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                    <div
+                      className="cursor-pointer select-none pl-[52px] pr-5 pt-4 pb-5"
                       onClick={() => setExpandedResultId((prev) => prev === q.id ? null : q.id)}
-                      className={resultHeaderClass}
+                      role="button"
                       aria-expanded={isExpanded}
                     >
-                      <div className="flex items-start gap-3">
-                        <span className={chevronWrapClass}>
-                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        </span>
+                      <div className="flex items-start justify-between gap-4 min-w-0">
                         <div className="min-w-0">
                           <h3 className={`font-bold text-lg ${textPrimaryClass}`}>{idx + 1}. {q.title}</h3>
                           <div className="flex flex-wrap gap-2 mt-2">
@@ -1221,18 +1200,16 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                             )}
                           </div>
                         </div>
-                      </div>
-                      <div className="pl-4 text-right">
-                        <div className={`flex items-end justify-end gap-1 font-bold leading-none ${scoreClass(res.passed)}`}>
-                          <span className="text-[2rem]">{formatScoreDisplay(pts)}</span>
-                          <span className="text-[1.35rem] leading-none translate-y-[-1px]">分</span>
+                        <div className="text-right shrink-0">
+                          <div className={`flex items-end justify-end gap-1 font-bold leading-none ${scoreClass(res.passed)}`}>
+                            <span className="text-[2rem]">{formatScoreDisplay(pts)}</span>
+                            <span className="text-[1.35rem] leading-none translate-y-[-1px]">分</span>
+                          </div>
+                          <div className={`text-xs mt-2 ${textMutedClass}`}>标准评分: {res.score}%</div>
                         </div>
-                        <div className={`text-xs mt-2 ${textMutedClass}`}>标准评分: {res.score}%</div>
                       </div>
-                    </button>
 
-                    <div className="px-5 pb-5">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 mt-4">
                         {res.detectedTags.length > 0 ? (
                           res.detectedTags.map((tag) => (
                             <div
@@ -1254,9 +1231,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           </div>
                         )}
                       </div>
+                    </div>
+                    </div>
 
                       {isExpanded && (
-                        <div className={`mt-5 space-y-4 ${resultDividerClass}`}>
+                        <div className={`ml-[52px] mr-5 pb-5 space-y-4 ${resultDividerClass}`}>
                           <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
                             <span className={`font-bold block mb-2 ${textPrimaryClass}`}>题目内容</span>
                             <p className={`text-sm whitespace-pre-wrap leading-7 ${summaryListClass}`}>{q.description}</p>
@@ -1269,7 +1248,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                                   src={getCacheBustedUrl(q.imageUrl)}
                                   alt={`${q.title} 配图`}
                                   referrerPolicy="no-referrer"
-                                  className={`rounded-lg border ${isLightTheme ? 'border-slate-200 bg-white' : 'border-slate-700 bg-black/20'} w-auto h-auto max-w-full max-h-[360px] shadow-lg hover:opacity-90 transition-opacity min-h-[100px]`}
+                                  className={`rounded-lg border ${isLightTheme ? 'border-slate-200 bg-white' : 'border-slate-700 bg-black/20'} w-auto h-auto max-w-full max-h-[360px] hover:shadow-lg hover:opacity-90 transition-all min-h-[100px]`}
                                   onError={(e) => {
                                     const src = (e.currentTarget as HTMLImageElement).currentSrc || "";
                                     if (src.startsWith('appimg://') || src.startsWith('blob:') || src.startsWith('data:')) {
@@ -1305,15 +1284,15 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
                           <div className="grid grid-cols-3 gap-4 text-sm">
                             <div className={`${strengthTone.panel} p-4 rounded-xl border`}>
-                              <span className={`${strengthTone.title} font-bold block mb-2`}>做得好的地方</span>
+                              <span className={`${strengthTone.title} font-bold block mb-2`}>做得好的点</span>
                               <p className={`${summaryListClass} leading-relaxed`}>{res.summary.highlights}</p>
                             </div>
                             <div className={`${issueTone.panel} p-4 rounded-xl border`}>
-                              <span className={`${issueTone.title} font-bold block mb-2`}>主要问题</span>
+                              <span className={`${issueTone.title} font-bold block mb-2`}>主要失分点</span>
                               <p className={`${summaryListClass} leading-relaxed`}>{res.summary.mainIssues}</p>
                             </div>
                             <div className={`${nextTone.panel} p-4 rounded-xl border`}>
-                              <span className={`${nextTone.title} font-bold block mb-2`}>下一步建议</span>
+                              <span className={`${nextTone.title} font-bold block mb-2`}>下一步提高</span>
                               <p className={`${summaryListClass} leading-relaxed`}>{res.summary.nextSteps}</p>
                             </div>
                           </div>
@@ -1338,6 +1317,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                                       original={studentAnswer}
                                       modified={res.correctedAnswer}
                                       theme={theme}
+                                      title="答案对比"
                                     />
                                     <div className="flex mt-1.5">
                                       <span className={`flex-1 text-center text-[11px] ${isLightTheme ? 'text-slate-400' : 'text-slate-500'}`}>你的作答</span>
@@ -1361,7 +1341,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           </div>
                         </div>
                       )}
-                    </div>
                     </div>
                   );
                 })}
@@ -1566,7 +1545,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           src={getCacheBustedUrl(resolvedCurrentImage || currentQ.imageUrl)} 
                           alt="题目配图" 
                           referrerPolicy="no-referrer"
-                          className="rounded-lg border border-slate-700 bg-black/20 w-80 h-auto max-w-full shadow-lg hover:opacity-90 transition-opacity min-h-[100px]"
+                          className="rounded-lg border border-slate-700 bg-black/20 w-80 h-auto max-w-full hover:shadow-lg hover:opacity-90 transition-all min-h-[100px]"
                           onError={(e) => {
                              const src = (e.currentTarget as HTMLImageElement).currentSrc || "";
                              // Only mark as error after appimg resolves to avoid early CDN failures

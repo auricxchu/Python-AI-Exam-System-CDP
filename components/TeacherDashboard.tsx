@@ -754,7 +754,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* Notification Toast */}
       {notif && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl border flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${notif.type === 'success' ? 'bg-green-600/90 border-green-500' : 'bg-orange-600/90 border-orange-500'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg shadow-xl border flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${notif.type === 'success' ? 'bg-green-600/90 border-green-500' : 'bg-orange-600/90 border-orange-500'}`}>
            <div className="bg-white/20 p-1 rounded-full">{notif.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}</div>
            <span className="font-bold text-sm text-white">{notif.msg}</span>
         </div>
@@ -763,8 +763,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Header */}
       <div className="w-full max-w-none flex justify-between items-center mb-6 shrink-0 pt-2">
          <div className="flex items-center gap-4">
-           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-3">
-             <Cloud className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" /> 云端题库管理
+           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
+             云端题库管理
            </h2>
            {(isLoadingCloud || isSyncing) && (
               <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-900/20 px-3 py-1 rounded-full border border-blue-800">
@@ -773,62 +773,81 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
            )}
          </div>
-         <div className="flex items-center gap-4 text-slate-400 text-sm">
+         <div className="flex items-center gap-2 text-slate-400">
+           <button
+             onClick={onToggleTheme}
+             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
+           >
+             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+             <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
+           </button>
+           <button
+             onClick={() => setApiSettingsOpen(true)}
+             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
+           >
+             <Settings className="w-4 h-4" />
+             <span className="text-xs font-medium">AI API 设置</span>
+           </button>
+           <button
+             onClick={() => setPasswordModalOpen(true)}
+             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
+           >
+             <Key className="w-4 h-4" />
+             <span className="text-xs font-medium">修改管理密码</span>
+           </button>
            <button
              onClick={onExit}
-             className="flex items-center gap-2 px-3 py-1.5 min-w-[96px] justify-center bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
+             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
            >
-             <LogOut className="w-4 h-4" /> {'返回首页'}
+             <LogOut className="w-4 h-4" />
+             <span className="text-xs font-medium">返回首页</span>
            </button>
          </div>
       </div>
 
       <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
         {/* Left Panel: Settings - Scrollable */}
-        <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-3 sm:gap-4 lg:gap-6 overflow-hidden pr-2">
+        <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-3 sm:gap-4 lg:gap-6 overflow-y-auto custom-scrollbar pr-2">
            {/* Basic Settings */}
-           <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
-              <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2"><Settings className="w-4 h-4"/> 基础设置</h3>
-              <div className="space-y-4">
-                {/* Exam Title */}
-                <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试名称</label>
-                    <div className="relative">
-                        <input 
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
-                            value={localConfig.examTitle} 
-                            onChange={e => setLocalConfig({...localConfig, examTitle: e.target.value})} 
-                        />
-                        <FileText className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    </div>
-                </div>
-
-                {/* Duration */}
-                <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试时长 (分钟)</label>
-                    <div className="relative">
-                        <input 
-                            type="number"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
-                            value={localConfig.duration} 
-                            onChange={e => setLocalConfig({...localConfig, duration: parseInt(e.target.value)})} 
-                        />
-                        <Clock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    </div>
-                </div>
-
-                {/* Access Key */}
-                <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试访问密钥</label>
-                    <div className="relative">
-                        <input 
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
-                            value={localConfig.accessKey || ''} 
-                            onChange={e => setLocalConfig({...localConfig, accessKey: e.target.value})} 
-                            placeholder="学生入场密码"
-                        />
-                        <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    </div>
+           <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-xl border border-slate-700/50">
+              <h3 className="font-bold text-white border-b border-slate-800 pb-2 mb-3 flex items-center gap-2"><Settings className="w-4 h-4"/> 基础设置</h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-[2fr_1fr_1fr] gap-3">
+                  <div>
+                      <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试名称</label>
+                      <div className="relative">
+                          <input
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                              value={localConfig.examTitle}
+                              onChange={e => setLocalConfig({...localConfig, examTitle: e.target.value})}
+                          />
+                          <FileText className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                      </div>
+                  </div>
+                  <div>
+                      <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试时长 (分钟)</label>
+                      <div className="relative">
+                          <input
+                              type="number"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                              value={localConfig.duration}
+                              onChange={e => setLocalConfig({...localConfig, duration: parseInt(e.target.value)})}
+                          />
+                          <Clock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                      </div>
+                  </div>
+                  <div>
+                      <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试访问密钥</label>
+                      <div className="relative">
+                          <input
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pl-9 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                              value={localConfig.accessKey || ''}
+                              onChange={e => setLocalConfig({...localConfig, accessKey: e.target.value})}
+                              placeholder="学生入场密码"
+                          />
+                          <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                      </div>
+                  </div>
                 </div>
 
                 <div>
@@ -854,21 +873,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         ))}
                     </div>
                 </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <Button variant="secondary" onClick={() => setApiSettingsOpen(true)} className="w-full">
-                        <Settings className="w-4 h-4" />
-                        AI API 设置
-                    </Button>
-                    <Button variant="secondary" onClick={() => setPasswordModalOpen(true)} className="w-full">
-                        <Key className="w-4 h-4" />
-                        修改管理密码
-                    </Button>
-                </div>
               </div>
            </div>
 
-           <div className="flex flex-col overflow-hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-700/50">
+           <div className="flex flex-col overflow-hidden bg-slate-900/80 backdrop-blur-md p-4 rounded-xl border border-slate-700/50">
              <h3 className="font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
                {localConfig.assemblyMode === 'random' ? '随机抽题设置' : '自由选题设置'}
              </h3>
@@ -990,7 +998,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
 
         {/* Right Panel: Content - Fills Height */}
-        <div className="col-span-12 lg:col-span-7 bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-700/50 flex flex-col h-full overflow-hidden shadow-xl">
+        <div className="col-span-12 lg:col-span-7 bg-slate-900/80 rounded-xl border border-slate-700/50 flex flex-col h-full overflow-hidden">
            <div className="flex border-b border-slate-700/50 bg-slate-800/30 shrink-0">
               {[{ id: 'list', label: '云端题库列表' }, { id: 'add', label: editingId ? '编辑题目' : '添加题目' }].map(tab => (
                 <button 
@@ -1212,7 +1220,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                         <CachedImage
                                           src={getCacheBustedUrl(resolvedDisplayImageUrl || displayImageUrl)} 
                                           alt="上传预览" 
-                                          className="w-64 h-auto object-contain rounded border border-slate-700 bg-black/40 shadow-lg" 
+                                          className="w-64 h-auto object-contain rounded border border-slate-700 bg-black/40"
                                           // Removed referrerPolicy
                                           onError={(e) => {
                                             const target = e.target as HTMLImageElement;

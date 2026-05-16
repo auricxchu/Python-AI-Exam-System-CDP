@@ -1,6 +1,6 @@
 ﻿
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon } from 'lucide-react';
+import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon, Eye, EyeOff } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
@@ -55,6 +55,7 @@ export default function App() {
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isCheckingNet, setIsCheckingNet] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [aiProvider, setAiProvider] = useState<AiProvider>(() => {
     const stored = localStorage.getItem('app_ai_provider') as AiProvider | null;
     const defaults: AiProvider[] = ['deepseek', 'openai', 'qwen', 'moonshot', 'gemini'];
@@ -605,10 +606,10 @@ const requestEnterMode = (nextMode: AppMode) => {
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center" style={{ gap: 'var(--landing-gap)' }}>
           {mode === 'landing' && (
             <>
-              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm shadow-xl" style={{ marginBottom: 'var(--landing-hero-mb)' }}>
+              <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm" style={{ marginBottom: 'var(--landing-hero-mb)' }}>
                  <Code className="text-blue-400" style={{ width: 'var(--landing-icon-size)', height: 'var(--landing-icon-size)' }} />
               </div>
-              <h1 className="landing-reveal landing-delay-2 font-bold text-white text-center tracking-tight drop-shadow-lg" style={{ fontSize: 'var(--landing-title-size)' }}>
+              <h1 className="landing-reveal landing-delay-2 font-bold text-white text-center tracking-tight" style={{ fontSize: 'var(--landing-title-size)' }}>
                 Python 智能考试系统
               </h1>
               <p className="landing-reveal landing-delay-3 text-slate-400 text-center max-w-2xl" style={{ fontSize: 'var(--landing-subtitle-size)' }}>
@@ -741,7 +742,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                     <span className="text-sm font-medium">退出系统</span>
                  </button>
               </div>
-              <div className="landing-reveal landing-delay-6 text-slate-600 text-[10px] sm:text-xs tracking-wide text-center mt-2">
+              <div className="landing-reveal landing-delay-6 text-slate-500 text-[9px] sm:text-[10px] tracking-wide text-center mt-2">
                 &copy; 2026 朱文皓 &amp; 文静. All Rights Reserved.
               </div>
             </>
@@ -749,7 +750,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
           {mode === 'teacher_login' && (
            <div className="w-full flex justify-center items-center min-h-0">
-            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
+            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
               <div className="bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-blue-950/40 border-b md:border-b-0 md:border-r border-slate-800" style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
@@ -785,16 +786,26 @@ const requestEnterMode = (nextMode: AppMode) => {
                 <form onSubmit={handleTeacherLogin} className="space-y-6">
                   <div>
                     <label className="block text-slate-400 text-xs mb-2">管理员密码</label>
-                    <input 
-                      name="password" 
-                      type="password" 
-                      className="w-full bg-slate-950/50 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition-colors"
-                      placeholder="请输入管理密码"
-                    />
+                    <div className="relative">
+                      <input
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        className="w-full bg-slate-950/50 border border-slate-700 rounded-lg p-3 pr-10 text-white focus:border-blue-500 outline-none transition-colors"
+                        placeholder="请输入管理密码"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
                   <div className="flex gap-3 pt-2">
                     <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
-                    <Button type="submit" isLoading={isCheckingTeacherLogin} disabled={isCheckingTeacherLogin} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/30">进入后台</Button>
+                    <Button type="submit" isLoading={isCheckingTeacherLogin} disabled={isCheckingTeacherLogin} className="flex-1 bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-900/30 text-white rounded-lg font-bold">进入后台</Button>
                   </div>
                 </form>
                 <div className="mt-6 text-xs text-slate-500">忘记密码请联系系统管理员。</div>
@@ -805,7 +816,7 @@ const requestEnterMode = (nextMode: AppMode) => {
 
         {mode === 'student_login' && (
            <div className="w-full flex justify-center items-center min-h-0">
-            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
+            <div className="w-full max-w-3xl mx-auto bg-slate-900/80 rounded-2xl border border-slate-700/50 backdrop-blur-md overflow-hidden grid md:grid-cols-2 animate-in fade-in zoom-in-95 duration-300">
               <div className="bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-indigo-950/40 border-b md:border-b-0 md:border-r border-slate-800" style={{ padding: 'var(--login-card-padding)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-blue-600/20 p-3 rounded-xl border border-blue-500/30">
@@ -841,11 +852,30 @@ const requestEnterMode = (nextMode: AppMode) => {
                   <Input name="name" label="姓名" placeholder="请输入姓名" required />
                   <Input name="sid" label="学号" placeholder="请输入11位学号" required maxLength={11} />
                   {config.accessKey && config.accessKey.trim() !== "" && (
-                    <Input name="accessKey" label="考试密钥" placeholder="请输入考试访问密钥" required type="password" />
+                    <div className="w-full">
+                      <label className="block text-slate-400 text-xs mb-1.5 font-medium">考试密钥</label>
+                      <div className="relative">
+                        <input
+                          name="accessKey"
+                          type={showPassword ? "text" : "password"}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 pr-10 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                          placeholder="请输入考试访问密钥"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <div className="flex gap-3 pt-4">
                     <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
-                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/30 whitespace-nowrap min-w-[140px]" isLoading={isCheckingNet}>
+                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-900/30 whitespace-nowrap min-w-[140px]" isLoading={isCheckingNet}>
                       {isCheckingNet ? "正在准备环境..." : "开始考试"}
                     </Button>
                   </div>
@@ -855,6 +885,9 @@ const requestEnterMode = (nextMode: AppMode) => {
           </div>
         )}
         </div>
+      </div>
+      <div className="absolute bottom-3 left-4 text-slate-500/50 text-[8px] sm:text-[9px] select-none pointer-events-none z-20">
+        v1.0.1 {navigator.platform.includes('Mac') ? 'MacOS' : 'Windows'}
       </div>
     </div>
     </>

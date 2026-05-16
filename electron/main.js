@@ -255,6 +255,7 @@ function createWindow() {
 ipcMain.on('app-exit', () => {
   const win = BrowserWindow.getAllWindows()[0];
   if (win && !win.isDestroyed()) {
+    win.setClosable(true);
     clearExamWindowPolicy(win);
   }
   app.quit();
