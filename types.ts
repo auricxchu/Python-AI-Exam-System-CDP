@@ -1,6 +1,32 @@
 export type Difficulty = "简单" | "中等" | "困难";
 export type ExamAssemblyMode = "random" | "manual";
 
+// ─── Skill-based scoring (new) ───
+
+export interface SkillRubric {
+  skillId: string;
+  description: string;
+  score: number;
+}
+
+export interface SkillCompletion {
+  skillId: string;
+  completion: number;     // 0.0 ~ 1.0
+  evidence?: string;
+}
+
+export type LightDeductionCode = "SYN_PARSE" | "SYN_MINOR" | "RUN_VAR" | "RUN_TYPE" | "STY_NAME";
+
+export interface LightDeductionHit {
+  code: LightDeductionCode;
+  label: string;
+  category: "syntax" | "runtime" | "style";
+  weight: number;
+  evidence: string;
+}
+
+// ─── Question ───
+
 export interface Question {
   id: string;
   title: string;
@@ -9,7 +35,10 @@ export interface Question {
   template: string;
   points?: number;
   imageUrl?: string;
+  rubric?: SkillRubric[];
 }
+
+// ─── Exam config ───
 
 export interface RuleSettings {
   [key: string]: {
@@ -40,6 +69,8 @@ export interface UserProfile {
   studentId: string;
   joinedAt: string;
 }
+
+// ─── Legacy deduction types (kept for backward compat with old reports) ───
 
 export type DeductionCategory = "syntax" | "logic" | "runtime" | "style";
 
@@ -82,14 +113,25 @@ export interface ScoreBreakdown {
   categoryTotals: Record<DeductionCategory, number>;
 }
 
+// ─── Grading result (expanded with skill-based fields) ───
+
 export interface GradingResult {
   passed: boolean;
   score: number;
   fullScore: number;
   earnedScore: number;
-  pathHit: boolean;
   blank: boolean;
   correctedAnswer?: string;
+
+  // New: skill-based scoring
+  skillCompletions: SkillCompletion[];
+  rubricUsed: SkillRubric[];
+  skillScore: number;
+  lightDeductions: LightDeductionHit[];
+  deductionTotal: number;
+
+  // Legacy fields (derived from new fields for backward compat)
+  pathHit: boolean;
   detectedTags: DeductionHit[];
   scoreBreakdown: ScoreBreakdown;
   summary: GradingSummary;
@@ -97,6 +139,8 @@ export interface GradingResult {
   quality_feedback: string;
   suggestion: string;
 }
+
+// ─── Exam report ───
 
 export interface ExamReviewSummary {
   overview: string;

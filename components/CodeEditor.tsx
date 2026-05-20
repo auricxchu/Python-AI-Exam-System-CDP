@@ -46,7 +46,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ code, onChange, readOnly, onRun
                 flex items-center gap-2 px-3 py-1.5 rounded transition-all text-xs font-bold
                 ${isRunning 
                   ? 'bg-slate-800 text-slate-400 cursor-not-allowed' 
-                  : 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/20 active:scale-95'
+                  : 'bg-green-600 hover:bg-green-500 hover:shadow-lg hover:shadow-green-900/20 text-white active:scale-95'
                 }
               `}
               title="运行代码 (F5 / Ctrl+Enter)"

@@ -15,6 +15,7 @@ import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
 import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
 import { SUPABASE_URL } from './services/supabaseClient';
+import pkg from './package.json';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
@@ -37,6 +38,77 @@ const REMOTE_RUNTIME_ASSET_URLS = [
   "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js",
   "https://unpkg.com/monaco-editor@0.44.0/min/vs/loader.js"
 ];
+
+const APP_VERSION = `v${pkg.version}`;
+
+function getDeviceInfo(): string {
+  const parts: string[] = [APP_VERSION];
+
+  // Prefer Electron's precise process API
+  try {
+    const p = (window as any).process;
+    if (p?.platform) {
+      const plat: string = p.platform;
+      let os = '';
+
+      if (plat === 'darwin') {
+        const raw = p.getSystemVersion?.() || '';
+        const ver = raw.split('.').slice(0, 2).join('.');
+        os = ver ? `macOS ${ver}` : 'macOS';
+      } else if (plat === 'win32') {
+        const raw = p.getSystemVersion?.() || '';
+        const build = parseInt(raw.split('.')[2]) || 0;
+        os = build >= 22000 ? 'Windows 11' : 'Windows 10';
+      } else if (plat === 'linux') {
+        os = 'Linux';
+      }
+
+      if (os) {
+        const arch = p.arch;
+        parts.push(arch ? `${os} (${arch})` : os);
+      }
+    }
+  } catch {}
+
+  // Fallback: parse navigator
+  if (parts.length <= 1) {
+    const ua = navigator.userAgent;
+    const platform = navigator.platform || '';
+    let os = '';
+
+    if (platform.startsWith('Mac')) {
+      os = 'macOS';
+    } else if (ua.includes('Windows')) {
+      os = 'Windows';
+    } else if (ua.includes('Linux')) {
+      os = 'Linux';
+    } else {
+      os = platform || 'Unknown';
+    }
+
+    let arch = '';
+    if (platform.includes('ARM') || ua.includes('arm64') || ua.includes('aarch64')) {
+      arch = 'arm64';
+    } else if (platform.includes('x86_64') || ua.includes('x64') || ua.includes('Win64') || ua.includes('WOW64')) {
+      arch = 'x64';
+    }
+
+    parts.push(arch ? `${os} (${arch})` : os);
+  }
+
+  // Screen
+  parts.push(`${screen.width}×${screen.height}`);
+
+  // CPU
+  const cores = navigator.hardwareConcurrency;
+  if (cores) parts.push(`${cores}核`);
+
+  // Memory (Chrome/Electron only)
+  const mem = (navigator as any).deviceMemory;
+  if (mem) parts.push(`${mem}GB`);
+
+  return parts.join(' · ');
+}
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('landing');
@@ -736,7 +808,7 @@ const requestEnterMode = (nextMode: AppMode) => {
               <div className="landing-reveal landing-delay-6 z-20 mt-2 sm:mt-4">
                  <button
                    onClick={handleSystemExit}
-                   className="landing-exit flex items-center gap-2 text-slate-600 hover:text-red-500 transition-colors px-6 py-2 rounded-full hover:bg-slate-800/50 group border border-transparent hover:border-slate-800"
+                   className="landing-exit flex items-center gap-2 text-slate-500 hover:text-red-400 transition-colors px-6 py-2 rounded-full hover:bg-white/5 group border border-transparent hover:border-slate-700/40"
                  >
                    <Power className="w-4 h-4 group-hover:scale-110 transition-transform" />
                     <span className="text-sm font-medium">退出系统</span>
@@ -805,7 +877,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   </div>
                   <div className="flex gap-3 pt-2">
                     <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
-                    <Button type="submit" isLoading={isCheckingTeacherLogin} disabled={isCheckingTeacherLogin} className="flex-1 bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-900/30 text-white rounded-lg font-bold">进入后台</Button>
+                    <Button type="submit" isLoading={isCheckingTeacherLogin} disabled={isCheckingTeacherLogin} className="flex-1 min-w-[140px]">进入后台</Button>
                   </div>
                 </form>
                 <div className="mt-6 text-xs text-slate-500">忘记密码请联系系统管理员。</div>
@@ -875,7 +947,7 @@ const requestEnterMode = (nextMode: AppMode) => {
                   )}
                   <div className="flex gap-3 pt-4">
                     <Button type="button" variant="secondary" onClick={() => setMode('landing')} className="flex-1 min-w-[140px]">返回</Button>
-                    <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-900/30 whitespace-nowrap min-w-[140px]" isLoading={isCheckingNet}>
+                    <Button type="submit" className="flex-1 whitespace-nowrap min-w-[140px]" isLoading={isCheckingNet}>
                       {isCheckingNet ? "正在准备环境..." : "开始考试"}
                     </Button>
                   </div>
@@ -887,7 +959,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         </div>
       </div>
       <div className="absolute bottom-3 left-4 text-slate-500/50 text-[8px] sm:text-[9px] select-none pointer-events-none z-20">
-        v1.0.1 {navigator.platform.includes('Mac') ? 'MacOS' : 'Windows'}
+        {getDeviceInfo()}
       </div>
     </div>
     </>

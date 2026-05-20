@@ -74,9 +74,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   
   // UI Modals
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [unansweredCount, setUnansweredCount] = useState(0);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const [infoMessage, setInfoMessage] = useState("");
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [scoringInfoOpen, setScoringInfoOpen] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState<'technical' | 'grading' | 'other'>('technical');
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -559,15 +561,26 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       lines.push(`[学生代码]`);
       lines.push(answers[q.id] || "(未作答)");
       lines.push("");
-      lines.push(`[标准得分]: ${res.score} / 100`);
-      lines.push(`[关键路径命中]: ${res.pathHit ? "是" : "否"}`);
-      if (res.detectedTags.length > 0) {
+      lines.push(`[能力得分]: ${res.skillScore} / 100`);
+      lines.push(`[轻量扣分]: -${res.deductionTotal}`);
+      lines.push(`[最终得分]: ${res.score} / 100`);
+      if (res.skillCompletions && res.skillCompletions.length > 0) {
+        lines.push("[能力完成度]");
+        res.skillCompletions.forEach((skill) => {
+          const def = res.rubricUsed.find(r => r.skillId === skill.skillId);
+          lines.push(`- ${def?.description || skill.skillId}: ${Math.round(skill.completion * 100)}% (${def ? Math.round(def.score * skill.completion) : '?'}/${def?.score || '?'}分)`);
+        });
+      } else if (res.detectedTags.length > 0) {
         lines.push("[扣分明细]");
         res.detectedTags.forEach((tag) => {
           lines.push(`- ${tag.label} (-${tag.weight}%): ${tag.evidence}`);
         });
-      } else {
-        lines.push("[扣分明细]: 未命中固定扣分标签");
+      }
+      if (res.lightDeductions && res.lightDeductions.length > 0) {
+        lines.push("[轻量扣分明细]");
+        res.lightDeductions.forEach((ded) => {
+          lines.push(`- ${ded.label} (-${ded.weight}%): ${ded.evidence}`);
+        });
       }
       lines.push(`[做得好的点]: ${res.summary.highlights}`);
       lines.push(`[主要失分点]: ${res.summary.mainIssues}`);
@@ -806,7 +819,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
            <div className="flex flex-col gap-2 text-slate-400 text-sm mt-4 min-w-[200px] text-left">
               <div className={`flex items-center gap-2 ${submissionStep === 'grading' ? 'text-blue-400 animate-pulse' : submissionStep === 'generating' || submissionStep === 'uploading' ? 'text-green-400' : 'text-slate-600'}`}>
                  {submissionStep === 'grading' ? <Loader2 className="w-4 h-4 animate-spin"/> : <CheckCircle className="w-4 h-4"/>} 
-                 AI 标签识别中
+                 AI 能力分析中
               </div>
               <div className={`flex items-center gap-2 ${submissionStep === 'generating' ? 'text-blue-400 animate-pulse' : submissionStep === 'uploading' ? 'text-green-400' : 'text-slate-600'}`}>
                  {submissionStep === 'generating' ? <Loader2 className="w-4 h-4 animate-spin"/> : <FileText className="w-4 h-4"/>} 
@@ -824,6 +837,8 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
   if (examFinished) {
     const isLightTheme = theme === 'light';
+    const totalPossiblePoints = questions.reduce((s, q) => s + (q.points || 0), 0);
+    const scoreRate = totalPossiblePoints > 0 ? (finalScore / totalPossiblePoints) * 100 : 0;
     const pageClass = isLightTheme
       ? 'h-screen w-full bg-gradient-to-br from-slate-100 via-white to-blue-100 font-sans text-slate-900 overflow-hidden relative'
       : 'h-screen w-full bg-gradient-to-br from-slate-900 via-[#0f172a] to-[#1e1b4b] font-sans text-slate-200 overflow-hidden relative';
@@ -920,6 +935,70 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                <AlertCircle className="w-6 h-6 text-blue-400" />
              </div>
              <p className={`${isLightTheme ? 'text-slate-700' : 'text-slate-300'} mt-1 whitespace-pre-wrap leading-relaxed`}>{infoMessage}</p>
+          </div>
+        </Modal>
+
+        {/* Scoring system info modal */}
+        <Modal
+          isOpen={scoringInfoOpen}
+          onClose={() => setScoringInfoOpen(false)}
+          title="评分系统说明"
+          panelClassName="max-w-[60vw]"
+          footer={<Button onClick={() => setScoringInfoOpen(false)}>我知道了</Button>}
+        >
+          <div className={`grid grid-cols-3 gap-6 text-sm leading-relaxed ${isLightTheme ? 'text-slate-700' : 'text-slate-300'}`}>
+            {/* Column 1: 能力完成度 */}
+            <div className="space-y-3">
+              <div className={`rounded-xl border p-3 ${isLightTheme ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/20'}`}>
+                <p className={`font-bold text-sm ${isLightTheme ? 'text-blue-700' : 'text-blue-300'}`}>能力导向评分</p>
+                <p className={`text-xs mt-1 ${isLightTheme ? 'text-blue-600' : 'text-blue-200'}`}>
+                  不再是传统的"找错扣分"，而是评估你<b>掌握了什么</b>。
+                </p>
+              </div>
+              <p className={`font-bold ${textPrimaryClass}`}>一、能力完成度（主体）</p>
+              <ul className={`space-y-2 text-xs ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
+                <li>• 每道题预先定义了若干<b>能力点</b>（如"遍历数组"），每项有权重。</li>
+                <li>• AI 对每个能力点给出<b>完成度</b>（0%~100%）。</li>
+                <li>• 进度条颜色：<span className="text-emerald-500 font-bold">绿≥80%</span> <span className="text-yellow-500 font-bold">黄≥50%</span> <span className="text-red-500 font-bold">红&lt;50%</span></li>
+              </ul>
+            </div>
+
+            {/* Column 2: 轻量扣分 */}
+            <div className="space-y-3">
+              <p className={`font-bold ${textPrimaryClass}`}>二、轻量扣分（少量）</p>
+              <ul className={`space-y-2 text-xs ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
+                <li>• 仅对<b>语法、运行时、命名</b>类错误做少量扣分。</li>
+                <li>• <b>逻辑问题</b>已通过能力完成度体现，不再重复扣分。</li>
+              </ul>
+              <div className={`rounded-lg border p-2.5 text-xs ${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/50 border-slate-700'}`}>
+                <p className={`font-bold mb-1.5 ${textMutedClass}`}>扣分明细</p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                  <span className={textMutedClass}>解析级语法错误</span><span className="text-right">-12</span>
+                  <span className={textMutedClass}>语法小错误</span><span className="text-right">-6</span>
+                  <span className={textMutedClass}>变量未定义/拼写</span><span className="text-right">-3</span>
+                  <span className={textMutedClass}>类型不匹配</span><span className="text-right">-5</span>
+                  <span className={textMutedClass}>命名可读性差</span><span className="text-right">-2</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 3: 最终计分 */}
+            <div className="space-y-3">
+              <p className={`font-bold ${textPrimaryClass}`}>三、最终计分</p>
+              <div className={`rounded-lg border p-3 text-center text-xs ${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/50 border-slate-700'}`}>
+                <p className={`font-mono font-bold ${textPrimaryClass}`}>能力得分 − 轻量扣分</p>
+                <p className={`font-mono font-bold ${textPrimaryClass}`}>= 最终得分(0-100)</p>
+                <p className={`mt-1.5 pt-1.5 border-t ${isLightTheme ? 'border-slate-200' : 'border-slate-700'} ${textMutedClass}`}>
+                  实际得分 = (最终得分/100) × 题目分值
+                </p>
+              </div>
+              <div className={`rounded-xl border p-3 text-xs ${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/50 border-slate-700'}`}>
+                <p className={`font-bold mb-1 ${textMutedClass}`}>举例</p>
+                <p className={`leading-relaxed ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
+                  一道 25 分的题，能力全部完成（100分），有 1 个语法小错误扣 6 分 → 最终 94 分 → 实际得 94%×25=23.5 分。
+                </p>
+              </div>
+            </div>
           </div>
         </Modal>
 
@@ -1023,8 +1102,15 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     <FileCheck className="w-12 h-12 text-blue-400" />
                   </div>
                   <h2 className={`text-2xl font-bold mb-2 ${textPrimaryClass}`}>考试成绩单</h2>
-                  <p className={textMutedClass}>最终得分</p>
-                  <div className="text-5xl font-bold text-blue-400 mt-2 tabular-nums">{formatScoreDisplay(animatedFinalScore)}</div>
+                  <div className="text-5xl font-bold text-blue-400 mt-2 tabular-nums">
+                    {formatScoreDisplay(animatedFinalScore)}
+                    <span className={`text-xl font-normal ml-1 ${textMutedClass}`}>
+                      / {totalPossiblePoints}
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-1 ${textMutedClass}`}>
+                    得分率 {formatScoreDisplay(scoreRate)}%
+                  </p>
                 </div>
 
                 <div className="report-info-grid">
@@ -1092,21 +1178,21 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     variant="secondary"
                     isLoading={isExportingReport}
                     disabled={!reportExportMeta}
-                    className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl bg-slate-700 hover:bg-slate-600 border-slate-600 text-white shadow-none'}
+                    className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl shadow-none'}
                   >
                     <Download className="w-4 h-4"/> 导出成绩单
                   </Button>
                   <Button
                     onClick={() => setFeedbackModalOpen(true)}
-                    variant="secondary"
-                    className={`h-11 rounded-xl shadow-none ${isLightTheme ? 'bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-700' : 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30 text-blue-300'}`}
+                    variant="info"
+                    className={`h-11 rounded-xl shadow-none ${isLightTheme ? 'bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-700' : ''}`}
                   >
                     <MessageSquare className="w-4 h-4"/> 反馈问题
                   </Button>
                   <Button onClick={onExit} variant="secondary" className={isLightTheme ? 'h-11 rounded-xl bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none' : 'h-11 rounded-xl shadow-none'}>
                     <LogOut className="w-4 h-4"/> 返回首页
                   </Button>
-                  <Button onClick={handleSafeSystemExit} className="h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-none">
+                  <Button onClick={handleSafeSystemExit} variant="danger" className="h-11 rounded-xl shadow-none">
                     <Power className="w-4 h-4"/> 退出系统
                   </Button>
                 </div>
@@ -1156,8 +1242,22 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     <h3 className={`text-xl font-bold ${textPrimaryClass}`}>分题解析</h3>
                     <p className={`text-sm ${textMutedClass}`}>展开后可查看题目内容、扣分依据、考生答案与 AI 参考答案。</p>
                   </div>
-                  <div className={countPillClass}>
-                    共 {questions.length} 题
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setScoringInfoOpen(true)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        isLightTheme
+                          ? 'border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300'
+                          : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:text-blue-400 hover:border-blue-500/40'
+                      }`}
+                      title="评分系统说明"
+                    >
+                      <Info className="w-3.5 h-3.5" /> 评分说明
+                    </button>
+                    <div className={countPillClass}>
+                      共 {questions.length} 题
+                    </div>
                   </div>
                 </div>
 
@@ -1195,9 +1295,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                           <div className="flex flex-wrap gap-2 mt-2">
                             <span className={metaChipClass}>{q.difficulty}</span>
                             <span className={metaChipClass}>满分: {q.points} 分</span>
-                            {res.pathHit && (
-                              <span className={pathHitChipClass}>关键路径命中</span>
-                            )}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
@@ -1209,28 +1306,78 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        {res.detectedTags.length > 0 ? (
-                          res.detectedTags.map((tag) => (
-                            <div
-                              key={`${q.id}-${tag.code}`}
-                              className={`text-xs px-2.5 py-1 rounded-full border ${getDeductionToneClass(tag.category, isLightTheme)}`}
-                              title={tag.evidence}
-                            >
-                              {tag.label} (-{tag.weight}%)
+                      {/* Skill completion bars (new format) */}
+                      {res.skillCompletions && res.skillCompletions.length > 0 ? (
+                        <div className="space-y-1.5 mt-4">
+                          <span className={`text-xs font-bold ${textMutedClass}`}>能力完成度</span>
+                          {res.skillCompletions.map((skill) => {
+                            const rubricDef = res.rubricUsed?.find(r => r.skillId === skill.skillId);
+                            const earnedPct = Math.round(skill.completion * 100);
+                            const barColor = earnedPct >= 80 ? 'bg-emerald-500' : earnedPct >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+                            return (
+                              <div key={skill.skillId} className="flex items-center gap-2">
+                                <span className={`text-xs truncate w-28 ${textMutedClass}`} title={rubricDef?.description}>{rubricDef?.description || skill.skillId}</span>
+                                <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isLightTheme ? 'bg-slate-200' : 'bg-slate-700'}`}>
+                                  <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${earnedPct}%` }} />
+                                </div>
+                                <span className={`text-xs w-8 text-right ${textMutedClass}`}>{earnedPct}%</span>
+                                {rubricDef && (
+                                  <span className={`text-xs w-14 text-right ${textMutedClass}`}>
+                                    {Math.round(rubricDef.score * skill.completion)}/{rubricDef.score}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : res.blank ? (
+                        <div className={`text-xs px-2.5 py-1 rounded-full border inline-block mt-4 ${
+                          isLightTheme
+                            ? 'border-slate-200 bg-slate-100 text-slate-500'
+                            : 'border-slate-700 bg-slate-800/50 text-slate-500'
+                        }`}>
+                          本题暂未作答
+                        </div>
+                      ) : (
+                        /* Fallback: old deduction tag display for old reports */
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {res.detectedTags && res.detectedTags.length > 0 ? (
+                            res.detectedTags.map((tag) => (
+                              <div
+                                key={`${q.id}-${tag.code}`}
+                                className={`text-xs px-2.5 py-1 rounded-full border ${getDeductionToneClass(tag.category, isLightTheme)}`}
+                                title={tag.evidence}
+                              >
+                                {tag.label} (-{tag.weight}%)
+                              </div>
+                            ))
+                          ) : (
+                            <div className={noDeductionChipClass}>
+                              未命中固定扣分标签
                             </div>
-                          ))
-                        ) : (
-                          <div className={noDeductionChipClass}>
-                            未命中固定扣分标签
-                          </div>
-                        )}
-                        {res.scoreBreakdown.floorApplied && (
-                          <div className={floorChipClass}>
-                            已触发关键路径保底
-                          </div>
-                        )}
-                      </div>
+                          )}
+                          {res.scoreBreakdown?.floorApplied && (
+                            <div className={floorChipClass}>
+                              已触发关键路径保底
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Light deductions (if any) */}
+                      {res.lightDeductions && res.lightDeductions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {res.lightDeductions.map((ded) => (
+                            <div
+                              key={`${q.id}-${ded.code}`}
+                              className={`text-xs px-2 py-0.5 rounded-full border ${getDeductionToneClass(ded.category, isLightTheme)}`}
+                              title={ded.evidence}
+                            >
+                              {ded.label} (-{ded.weight})
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     </div>
 
@@ -1269,7 +1416,39 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                             )}
                           </div>
 
-                          {res.detectedTags.length > 0 && (
+                          {/* Skill completion evidence */}
+                          {res.skillCompletions && res.skillCompletions.some(s => s.evidence) && (
+                            <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
+                              <span className={`font-bold block mb-2 ${textPrimaryClass}`}>能力评估依据</span>
+                              <ul className={`space-y-2 text-sm ${textMutedClass}`}>
+                                {res.skillCompletions.filter(s => s.evidence).map((skill) => (
+                                  <li key={`${q.id}-${skill.skillId}-evidence`} className="leading-relaxed">
+                                    <span className={textPrimaryClass}>
+                                      {res.rubricUsed?.find(r => r.skillId === skill.skillId)?.description || skill.skillId}：
+                                    </span>
+                                    {skill.evidence}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Light deduction evidence */}
+                          {res.lightDeductions && res.lightDeductions.length > 0 && (
+                            <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
+                              <span className={`font-bold block mb-2 ${textPrimaryClass}`}>轻量扣分证据</span>
+                              <ul className={`space-y-2 text-sm ${textMutedClass}`}>
+                                {res.lightDeductions.map((ded) => (
+                                  <li key={`${q.id}-${ded.code}-evidence`} className="leading-relaxed">
+                                    <span className={textPrimaryClass}>{ded.label}：</span>{ded.evidence}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Fallback: old deduction evidence for old reports */}
+                          {(!res.skillCompletions || res.skillCompletions.length === 0) && (!res.lightDeductions || res.lightDeductions.length === 0) && res.detectedTags && res.detectedTags.length > 0 && (
                             <div className={`${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800/80'} p-4 rounded-xl border`}>
                               <span className={`font-bold block mb-2 ${textPrimaryClass}`}>扣分证据</span>
                               <ul className={`space-y-2 text-sm ${textMutedClass}`}>
@@ -1361,12 +1540,25 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         footer={
            <>
              <Button variant="secondary" onClick={() => setSubmitModalOpen(false)}>取消</Button>
-             <Button onClick={() => finishExam()}>确认交卷</Button>
+             <Button onClick={() => finishExam()}>{unansweredCount > 0 ? '仍然交卷' : '确认交卷'}</Button>
            </>
         }
       >
         <p>确定要提交试卷吗？提交后将无法修改答案。</p>
-        <p className="text-xs text-slate-500 mt-2">注意：提交后系统将自动生成考试报告并上传至云端。</p>
+        {unansweredCount > 0 && (
+          <div className={`mt-3 rounded-lg border px-4 py-3 text-sm flex items-start gap-3 ${
+            theme === 'light'
+              ? 'border-amber-300 bg-amber-50 text-amber-800'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+          }`}>
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">还有 {unansweredCount} 道题目未作答</p>
+              <p className="text-xs mt-1 opacity-80">未作答的题目将被判为空白，得分为 0。建议返回检查后再交卷。</p>
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-3">提交后系统将自动生成考试报告并上传至云端。</p>
       </Modal>
 
       {/* Image Zoom Modal */}
@@ -1455,7 +1647,14 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         </div>
 
         <div className="p-4 border-t border-slate-800">
-          <Button className="w-full py-3" onClick={() => setSubmitModalOpen(true)}>
+          <Button className="w-full py-3" onClick={() => {
+            const unanswered = questions.filter(q => {
+              const code = answers[q.id];
+              return !code || code === q.template;
+            });
+            setUnansweredCount(unanswered.length);
+            setSubmitModalOpen(true);
+          }}>
             <Send className="w-4 h-4"/> 交 卷
           </Button>
         </div>
@@ -1634,3 +1833,4 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 };
 
 export default StudentExam;
+;

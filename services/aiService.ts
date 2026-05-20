@@ -7,7 +7,11 @@ import {
   Difficulty,
   ExamReviewSummary,
   GradingResult,
-  Question
+  LightDeductionCode,
+  LightDeductionHit,
+  Question,
+  SkillCompletion,
+  SkillRubric
 } from "../types";
 import { pingCloudProvider, requestCloudJsonText, isCloudAiProxyEnabled } from "./aiCloudService";
 import { AI_PROVIDERS, AiProvider, AiProviderConfig, AiProviderSettings } from "./aiTypes";
@@ -18,8 +22,9 @@ const hasKey = (val?: string) => !!val && val.trim().length > 0;
 export type { AiProvider, AiProviderConfig, AiProviderSettings } from "./aiTypes";
 
 const AI_SETTINGS_STORAGE_KEY = "app_ai_settings";
-const SCORE_FLOOR_IF_PATH_HIT = 40;
 let runtimeAiSettings: AiProviderSettings | null = null;
+
+// ─── Legacy deduction constants (kept for backward compat) ───
 
 const DEDUCTION_CAPS: Record<DeductionCategory, number> = {
   syntax: 20,
@@ -83,6 +88,66 @@ export const DEDUCTION_RULES: DeductionRule[] = [
 const DEDUCTION_RULE_MAP = Object.fromEntries(
   DEDUCTION_RULES.map((rule) => [rule.code, rule])
 ) as Record<DeductionCode, DeductionRule>;
+
+// ─── New: Lightweight deduction rules (logic removed) ───
+
+const LIGHT_DEDUCTION_CAPS: Record<string, number> = {
+  syntax: 15,
+  runtime: 8,
+  style: 2
+};
+
+export const LIGHT_DEDUCTION_RULES: { code: LightDeductionCode; label: string; category: "syntax" | "runtime" | "style"; weight: number; description: string }[] = [
+  {
+    code: "SYN_PARSE",
+    label: "解析级语法错误",
+    category: "syntax",
+    weight: 12,
+    description: "缩进、括号或代码块结构错误，导致程序整体无法解析。"
+  },
+  {
+    code: "SYN_MINOR",
+    label: "语法小错误",
+    category: "syntax",
+    weight: 6,
+    description: "偶发性手误，如中英文符号混用、单处拼写问题。"
+  },
+  {
+    code: "RUN_VAR",
+    label: "变量使用错误",
+    category: "runtime",
+    weight: 3,
+    description: "变量名拼写错误、变量未定义就使用。"
+  },
+  {
+    code: "RUN_TYPE",
+    label: "类型使用错误",
+    category: "runtime",
+    weight: 5,
+    description: "类型不匹配导致运行失败，如字符串与整数直接相加。"
+  },
+  {
+    code: "STY_NAME",
+    label: "命名可读性不足",
+    category: "style",
+    weight: 2,
+    description: "变量名过于随意，几乎无法体现含义。"
+  }
+];
+
+const LIGHT_DEDUCTION_RULE_MAP = Object.fromEntries(
+  LIGHT_DEDUCTION_RULES.map((rule) => [rule.code, rule])
+) as Record<LightDeductionCode, typeof LIGHT_DEDUCTION_RULES[number]>;
+
+// ─── Rubric inference cache (module scope) ───
+
+const rubricCache = new Map<string, SkillRubric[]>();
+
+const rubricCacheKey = (title: string, description: string): string => {
+  return `${title}::${description}`;
+};
+
+// ─── AI provider config ───
 
 const defaultProviderModels: Record<AiProvider, string> = {
   deepseek: "deepseek-chat",
@@ -198,6 +263,8 @@ const normalizeDifficulty = (input: string | undefined): Difficulty => {
 
 type GeneratedQuestion = Pick<Question, "title" | "description" | "difficulty" | "template">;
 
+// ─── Raw AI response types ───
+
 type RawDetectedTag = {
   code?: string;
   evidence?: string;
@@ -214,9 +281,37 @@ type RawGradingResponse = {
   };
 };
 
+type RawSkillGradingResponse = {
+  skill_completions?: {
+    skillId?: string;
+    completion?: number;
+    evidence?: string;
+  }[];
+  light_deductions?: {
+    code?: string;
+    evidence?: string;
+  }[];
+  corrected_answer?: string;
+  feedback?: {
+    highlights?: string;
+    main_issues?: string;
+    suggestions?: string;
+  };
+};
+
+type RawRubricInferenceResponse = {
+  rubric?: {
+    skillId?: string;
+    description?: string;
+    score?: number;
+  }[];
+};
+
 type RawReferenceAnswerResponse = {
   reference_answer?: string;
 };
+
+// ─── JSON helpers ───
 
 const normalizeJsonText = (text: string): string => {
   const trimmed = text.trim();
@@ -242,12 +337,12 @@ const parseJsonObject = <T>(text: string): T => {
 
 const requestCloudJsonObject = async <T>(
   provider: AiProvider,
-  schemaKind: "question_generation" | "reference_answer" | "grading",
+  schemaKind: "question_generation" | "reference_answer" | "grading" | "rubric_inference",
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.2
 ): Promise<T | null> => {
-  const text = await requestCloudJsonText(provider, schemaKind, systemPrompt, userPrompt, temperature);
+  const text = await requestCloudJsonText(provider, schemaKind as any, systemPrompt, userPrompt, temperature);
   if (!text) return null;
   try {
     return parseJsonObject<T>(text);
@@ -293,6 +388,8 @@ const requestOpenAIJson = async (
   if (!content) throw new Error(`Empty response from ${provider}`);
   return parseJsonObject(content);
 };
+
+// ─── Question generation ───
 
 const questionGenerationPrompt = () => `你是一名 Python 编程考试出题助手。
 请仅返回合法 JSON，不要输出 Markdown。
@@ -424,6 +521,8 @@ ${instruction}
   }
 };
 
+// ─── Reference answer generation ───
+
 const referenceAnswerPrompt = () => `你是一名 Python 编程考试讲评老师。
 请根据题目生成一份适合学生对照学习的参考答案。
 请仅返回合法 JSON，不要输出 Markdown。
@@ -541,6 +640,8 @@ export const generateReferenceAnswer = async (
   }
 };
 
+// ─── Provider connection testing ───
+
 const pingOpenAICompatible = async (
   provider: string,
   apiKey: string,
@@ -655,170 +756,134 @@ export const testProviderConnectionWithSettings = async (
   return false;
 };
 
-const gradingClassifierPrompt = () => `你是一名极其温和、客观、稳定的 Python 代码分析员。
-你的任务不是给总分，而是识别固定标签并提取证据。
+// ═══════════════════════════════════════════════════════════════
+// NEW: Skill-based grading system
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Prompts ───
+
+const skillGradingPrompt = (rubric: SkillRubric[]) => {
+  const rubricLines = rubric
+    .map((r) => `- skillId: "${r.skillId}", 描述: "${r.description}", 占比: ${r.score}%`)
+    .join("\n");
+
+  return `你是一名编程教学评分助手。
+你的任务不是给代码打总分，而是根据给定的评分标准（rubric），判断学生代码对每个能力点的完成程度，并识别轻量级的语法/运行时/风格错误。
 
 请严格遵循：
-1. 只输出合法 JSON。
+1. 只输出合法 JSON，不要输出 Markdown。
 2. 不要计算总分。
-3. 只允许使用以下错误代码：
-   - SYN_MINOR
-   - SYN_BLOCK
-   - LOG_MISS
-   - LOG_WRONG
-   - RUN_VAR
-   - RUN_TYPE
-   - STY_NAME
-4. 如果代码能看出明显的解题尝试，尤其出现了与题目相关的输入、计算、循环、判断、函数等关键路径，请将 path_hit 设为 true。
-5. 如果只是小语法错误，不要因此否定整体逻辑。
-6. 若同类错误重复出现，只需给出一次最具代表性的证据。
-7. 评语必须先肯定，再指出问题，最后给出下一步建议。
+3. 对每个能力点给出 0.0~1.0 的完成度：
+   - 1.0 = 完全正确实现
+   - 0.7~0.9 = 基本正确，有小瑕疵
+   - 0.4~0.6 = 有思路但实现不完整
+   - 0.1~0.3 = 仅有初步尝试
+   - 0.0 = 完全缺失
+4. 轻量错误只允许使用以下代码（逻辑问题由完成度体现，不要用错误码表达）：
+   - SYN_PARSE: 缩进、括号或代码块结构错误，导致程序整体无法解析
+   - SYN_MINOR: 偶发性手误，如中英文符号混用、单处拼写问题
+   - RUN_VAR: 变量名拼写错误、变量未定义就使用
+   - RUN_TYPE: 类型不匹配导致运行失败
+   - STY_NAME: 变量名过于随意，几乎无法体现含义
+5. 同类错误重复出现只需给一次最具代表性的证据。
+6. 评语必须先肯定，再指出问题，最后给出下一步建议。
 
-标签说明：
-- SYN_MINOR: 小语法手误，如中英文符号混用、个别关键字拼写错误，但能看懂整体结构。
-- SYN_BLOCK: 结构性语法错误，如缩进、函数定义、代码块结构错误，导致整体无法解析。
-- LOG_MISS: 缺少关键逻辑路径。
-- LOG_WRONG: 写出了逻辑，但方向偏差、边界或公式错误。
-- RUN_VAR: 变量名拼错、未定义变量。
-- RUN_TYPE: 类型不匹配导致运行错误。
-- STY_NAME: 命名几乎无意义，可读性明显不足。
+评分标准（Rubric）：
+${rubricLines}
 
 输出 JSON 结构：
 {
-  "path_hit": true,
-  "detected_tags": [
-    { "code": "SYN_MINOR", "evidence": "第 3 行 print 使用了中文括号" }
+  "skill_completions": [
+    { "skillId": "array_iteration", "completion": 1.0, "evidence": "正确使用for循环遍历了列表" }
   ],
-  "corrected_answer": "请给出一份简洁、可运行、适合初学者参考的修正版 Python 代码",
+  "light_deductions": [
+    { "code": "SYN_MINOR", "evidence": "第3行print使用了中文括号" }
+  ],
+  "corrected_answer": "修正后的完整Python代码",
   "feedback": {
-    "highlights": "先说做得好的地方",
-    "main_issues": "主要问题描述",
+    "highlights": "做得好的地方",
+    "main_issues": "主要问题",
     "suggestions": "下一步建议"
   }
 }`;
+};
 
-const gradingUserPrompt = (title: string, description: string, code: string) => `题目名称：
+const rubricInferencePrompt = () => `你是一名 Python 编程教学专家。
+请根据题目信息，推断这道题考察了哪些编程能力点，并为每个能力点分配合理的百分比权重。
+
+要求：
+1. 只输出合法 JSON，不要输出 Markdown。
+2. skillId 使用英文驼峰命名，如 "array_iteration", "even_check", "max_update"。
+3. 能力点数量建议 3~6 个。
+4. 各能力点的 score 是百分比，所有 score 之和必须等于 100。
+5. 能力点应该具体、可判断，避免过于笼统（如"编程能力"）。
+6. description 用中文描述。
+
+常见能力点参考：
+- 输入处理（读取用户输入、解析数据）
+- 遍历/迭代（for/while循环）
+- 条件判断（if/else分支）
+- 数学计算（算术运算、公式实现）
+- 数据结构操作（列表/字典/集合的增删改查）
+- 函数定义与调用
+- 字符串处理
+- 排序/查找算法
+- 递归
+- 边界处理
+- 输出格式化
+
+输出 JSON 结构：
+{
+  "rubric": [
+    { "skillId": "input_reading", "description": "读取输入数据", "score": 15 },
+    { "skillId": "array_iteration", "description": "遍历数组", "score": 25 }
+  ]
+}`;
+
+const rubricInferenceUserPrompt = (title: string, description: string) => `题目名称：
 ${title}
 
 题目描述：
 ${description}
 
-学生代码：
-${code}
+请推断这道题目考察的能力点并分配分值。`;
 
-请只做标签识别和证据提取，不要自行打总分。`;
+// ─── Score calculation ───
 
-const isMeaningfulCode = (code: string): boolean => {
-  const compact = code.replace(/\s+/g, "").toLowerCase();
-  if (!compact) return false;
-  const placeholders = ["pass", "todo", "solution()", "defsolution():pass"];
-  return !placeholders.includes(compact);
-};
-
-const createResultFromSummary = (
-  pathHit: boolean,
-  detectedTags: DeductionHit[],
-  summary: { highlights: string; mainIssues: string; nextSteps: string },
-  options?: {
-    blank?: boolean;
-    correctedAnswer?: string;
-    baseScore?: number;
-  }
-): GradingResult => {
-  const blank = options?.blank ?? false;
-  const baseScore = options?.baseScore ?? 100;
-  const categoryTotals: Record<DeductionCategory, number> = {
-    syntax: 0,
-    logic: 0,
-    runtime: 0,
-    style: 0
-  };
-
-  detectedTags.forEach((tag) => {
-    categoryTotals[tag.category] += tag.weight;
-  });
-
-  const cappedCategoryTotals: Record<DeductionCategory, number> = {
-    syntax: Math.min(categoryTotals.syntax, DEDUCTION_CAPS.syntax),
-    logic: Math.min(categoryTotals.logic, DEDUCTION_CAPS.logic),
-    runtime: Math.min(categoryTotals.runtime, DEDUCTION_CAPS.runtime),
-    style: Math.min(categoryTotals.style, DEDUCTION_CAPS.style)
-  };
-
-  const deductionTotal =
-    cappedCategoryTotals.syntax +
-    cappedCategoryTotals.logic +
-    cappedCategoryTotals.runtime +
-    cappedCategoryTotals.style;
-
-  const rawScore = Math.max(0, baseScore - deductionTotal);
-  const floorApplied = !blank && pathHit && rawScore < SCORE_FLOOR_IF_PATH_HIT;
-  const finalScore = floorApplied ? SCORE_FLOOR_IF_PATH_HIT : rawScore;
-
-  return {
-    passed: finalScore >= 60,
-    score: finalScore,
-    fullScore: 100,
-    earnedScore: finalScore,
-    pathHit,
-    blank,
-    correctedAnswer: options?.correctedAnswer?.trim() || undefined,
-    detectedTags,
-    scoreBreakdown: {
-      rawScore,
-      finalScore,
-      deductionTotal,
-      floorApplied,
-      categoryTotals: cappedCategoryTotals
-    },
-    summary,
-    logic_feedback: summary.mainIssues,
-    quality_feedback:
-      detectedTags.length > 0
-        ? `命中扣分项：${detectedTags.map((tag) => `${tag.label}(-${tag.weight}%)`).join("、")}`
-        : "未命中明显扣分项。",
-    suggestion: summary.nextSteps
-  };
-};
-
-export const createBlankGradingResult = (correctedAnswer?: string): GradingResult =>
-  createResultFromSummary(
-    false,
-    [],
-    {
-      highlights: "本题暂未作答，暂时没有可评价的亮点。",
-      mainIssues: "当前答案为空，系统未检测到有效作答内容。",
-      nextSteps: "先完成基础作答，再逐步检查输入、逻辑和输出。"
-    },
-    { blank: true, baseScore: 0, correctedAnswer }
-  );
-
-const createErrorGradingResult = (message: string, detail: string): GradingResult =>
-  createResultFromSummary(
-    false,
-    [],
-    {
-      highlights: "本次未能完成有效阅卷。",
-      mainIssues: message,
-      nextSteps: detail
-    },
-    { baseScore: 0 }
-  );
-
-const normalizeDetectedTags = (raw: RawDetectedTag[] | undefined): DeductionHit[] => {
+const normalizeSkillCompletions = (
+  raw: RawSkillGradingResponse["skill_completions"] | undefined,
+  rubric: SkillRubric[]
+): SkillCompletion[] => {
   if (!raw?.length) return [];
-  const seen = new Set<DeductionCode>();
-  const hits: DeductionHit[] = [];
+  const rubricMap = new Map(rubric.map((r) => [r.skillId, r]));
+
+  return raw
+    .filter((item) => item.skillId && rubricMap.has(item.skillId))
+    .map((item) => {
+      let completion = Number(item.completion);
+      if (isNaN(completion)) completion = 0;
+      completion = Math.max(0, Math.min(1, completion));
+      return {
+        skillId: item.skillId!,
+        completion,
+        evidence: item.evidence?.trim() || undefined
+      };
+    });
+};
+
+const normalizeLightDeductions = (
+  raw: RawSkillGradingResponse["light_deductions"] | undefined
+): LightDeductionHit[] => {
+  if (!raw?.length) return [];
+  const seen = new Set<string>();
+  const hits: LightDeductionHit[] = [];
 
   for (const item of raw) {
-    const code = item.code as DeductionCode | undefined;
-    if (!code || !(code in DEDUCTION_RULE_MAP)) continue;
-    if (code === "SYN_MINOR" && raw.some((candidate) => candidate.code === "SYN_BLOCK")) {
-      continue;
-    }
+    const code = item.code as LightDeductionCode | undefined;
+    if (!code || !(code in LIGHT_DEDUCTION_RULE_MAP)) continue;
     if (seen.has(code)) continue;
     seen.add(code);
-    const rule = DEDUCTION_RULE_MAP[code];
+    const rule = LIGHT_DEDUCTION_RULE_MAP[code];
     hits.push({
       code,
       label: rule.label,
@@ -831,25 +896,156 @@ const normalizeDetectedTags = (raw: RawDetectedTag[] | undefined): DeductionHit[
   return hits;
 };
 
-const classifyWithGemini = async (
+const createSkillResultFromSummary = (
+  rubricUsed: SkillRubric[],
+  skillCompletions: SkillCompletion[],
+  lightDeductions: LightDeductionHit[],
+  summary: { highlights: string; mainIssues: string; nextSteps: string },
+  options?: {
+    blank?: boolean;
+    correctedAnswer?: string;
+  }
+): GradingResult => {
+  const blank = options?.blank ?? false;
+
+  // Calculate skill score
+  const totalRubricScore = rubricUsed.reduce((sum, r) => sum + r.score, 0);
+  let skillScore = 0;
+  if (totalRubricScore > 0) {
+    const rubricMap = new Map(rubricUsed.map((r) => [r.skillId, r]));
+    let earnedSum = 0;
+    for (const comp of skillCompletions) {
+      const rubricItem = rubricMap.get(comp.skillId);
+      if (rubricItem) {
+        earnedSum += rubricItem.score * comp.completion;
+      }
+    }
+    skillScore = Math.round((earnedSum / totalRubricScore) * 100);
+  }
+
+  // Calculate light deductions
+  const deductionByCategory: Record<string, number> = { syntax: 0, runtime: 0, style: 0 };
+  for (const ded of lightDeductions) {
+    deductionByCategory[ded.category] = (deductionByCategory[ded.category] || 0) + ded.weight;
+  }
+  const cappedDeductions = {
+    syntax: Math.min(deductionByCategory.syntax, LIGHT_DEDUCTION_CAPS.syntax),
+    runtime: Math.min(deductionByCategory.runtime, LIGHT_DEDUCTION_CAPS.runtime),
+    style: Math.min(deductionByCategory.style, LIGHT_DEDUCTION_CAPS.style)
+  };
+  const deductionTotal = cappedDeductions.syntax + cappedDeductions.runtime + cappedDeductions.style;
+  const finalScore = Math.max(0, skillScore - deductionTotal);
+
+  // Build legacy-compatible fields
+  const pathHit = !blank && skillCompletions.some((c) => c.completion > 0);
+  const legacyCategoryTotals: Record<DeductionCategory, number> = {
+    syntax: cappedDeductions.syntax,
+    logic: 0,
+    runtime: cappedDeductions.runtime,
+    style: cappedDeductions.style
+  };
+  const legacyDetectedTags: DeductionHit[] = lightDeductions.map((d) => ({
+    code: (d.code === "SYN_PARSE" ? "SYN_BLOCK" : d.code) as DeductionCode,
+    label: d.label,
+    category: d.category as DeductionCategory,
+    weight: d.weight,
+    evidence: d.evidence
+  }));
+
+  return {
+    passed: finalScore >= 60,
+    score: finalScore,
+    fullScore: 100,
+    earnedScore: finalScore,
+    blank,
+    correctedAnswer: options?.correctedAnswer?.trim() || undefined,
+
+    // New fields
+    skillCompletions,
+    rubricUsed,
+    skillScore,
+    lightDeductions,
+    deductionTotal,
+
+    // Legacy derived fields
+    pathHit,
+    detectedTags: legacyDetectedTags,
+    scoreBreakdown: {
+      rawScore: skillScore,
+      finalScore,
+      deductionTotal,
+      floorApplied: false,
+      categoryTotals: legacyCategoryTotals
+    },
+    summary,
+    logic_feedback: summary.mainIssues,
+    quality_feedback:
+      lightDeductions.length > 0
+        ? `轻量扣分：${lightDeductions.map((d) => `${d.label}(-${d.weight})`).join("、")}`
+        : "未命中轻量扣分项。",
+    suggestion: summary.nextSteps
+  };
+};
+
+// ─── Blank / Error results ───
+
+export const createBlankGradingResult = (correctedAnswer?: string): GradingResult =>
+  createSkillResultFromSummary(
+    [],
+    [],
+    [],
+    {
+      highlights: "本题暂未作答，暂时没有可评价的亮点。",
+      mainIssues: "当前答案为空，系统未检测到有效作答内容。",
+      nextSteps: "先完成基础作答，再逐步检查输入、逻辑和输出。"
+    },
+    { blank: true, correctedAnswer }
+  );
+
+const createErrorGradingResult = (message: string, detail: string): GradingResult =>
+  createSkillResultFromSummary(
+    [],
+    [],
+    [],
+    {
+      highlights: "本次未能完成有效阅卷。",
+      mainIssues: message,
+      nextSteps: detail
+    }
+  );
+
+// ─── AI API callers for skill grading ───
+
+const classifySkillWithGemini = async (
   apiKey: string,
   model: string,
   title: string,
   description: string,
-  code: string
-): Promise<RawGradingResponse> => {
+  code: string,
+  rubric: SkillRubric[]
+): Promise<RawSkillGradingResponse> => {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model,
-    contents: `${gradingClassifierPrompt()}\n\n${gradingUserPrompt(title, description, code)}`,
+    contents: `${skillGradingPrompt(rubric)}\n\n${skillGradingUserPrompt(title, description, code)}`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          path_hit: { type: Type.BOOLEAN },
           corrected_answer: { type: Type.STRING },
-          detected_tags: {
+          skill_completions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                skillId: { type: Type.STRING },
+                completion: { type: Type.NUMBER },
+                evidence: { type: Type.STRING }
+              }
+            }
+          },
+          light_deductions: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
@@ -873,35 +1069,187 @@ const classifyWithGemini = async (
   });
 
   if (!response.text) throw new Error("Empty response from Gemini");
-  return parseJsonObject<RawGradingResponse>(response.text);
+  return parseJsonObject<RawSkillGradingResponse>(response.text);
 };
 
-const classifyWithOpenAICompatible = async (
+const classifySkillWithOpenAICompatible = async (
   provider: string,
   apiKey: string,
   url: string,
   model: string,
   title: string,
   description: string,
-  code: string
-): Promise<RawGradingResponse> =>
+  code: string,
+  rubric: SkillRubric[]
+): Promise<RawSkillGradingResponse> =>
   requestOpenAIJson(
     provider,
     apiKey,
     url,
     model,
-    gradingClassifierPrompt(),
-    gradingUserPrompt(title, description, code),
+    skillGradingPrompt(rubric),
+    skillGradingUserPrompt(title, description, code),
     0.1
   );
 
+const skillGradingUserPrompt = (title: string, description: string, code: string) => `题目名称：
+${title}
+
+题目描述：
+${description}
+
+学生代码：
+${code}
+
+请根据评分标准判断每个能力点的完成度，并识别轻量语法/运行时/风格错误。不要自行打总分。`;
+
+// ─── Rubric inference API caller ───
+
+const callRubricInference = async (
+  provider: AiProvider,
+  title: string,
+  description: string
+): Promise<SkillRubric[] | null> => {
+  const settings = getAiSettings();
+  const key = settings[provider].apiKey;
+
+  // Try cloud proxy first
+  const cloudRaw = await requestCloudJsonObject<RawRubricInferenceResponse>(
+    provider,
+    "rubric_inference",
+    rubricInferencePrompt(),
+    rubricInferenceUserPrompt(title, description),
+    0.3
+  );
+  if (cloudRaw?.rubric?.length) {
+    return cloudRaw.rubric
+      .filter((r) => r.skillId && r.description && typeof r.score === "number" && r.score > 0)
+      .map((r) => ({
+        skillId: r.skillId!,
+        description: r.description!,
+        score: r.score!
+      }));
+  }
+  if (isCloudAiProxyEnabled()) return null;
+  if (!hasKey(key)) return null;
+
+  try {
+    let raw: RawRubricInferenceResponse;
+    if (provider === "gemini") {
+      const ai = new GoogleGenAI({ apiKey: settings.gemini.apiKey });
+      const response = await ai.models.generateContent({
+        model: settings.gemini.model,
+        contents: `${rubricInferencePrompt()}\n\n${rubricInferenceUserPrompt(title, description)}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              rubric: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    skillId: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    score: { type: Type.NUMBER }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      if (!response.text) throw new Error("Empty response from Gemini");
+      raw = parseJsonObject<RawRubricInferenceResponse>(response.text);
+    } else if (provider === "deepseek") {
+      raw = await requestOpenAIJson(
+        "Deepseek",
+        settings.deepseek.apiKey,
+        "https://api.deepseek.com/chat/completions",
+        settings.deepseek.model,
+        rubricInferencePrompt(),
+        rubricInferenceUserPrompt(title, description),
+        0.3
+      );
+    } else if (provider === "openai") {
+      raw = await requestOpenAIJson(
+        "OpenAI",
+        settings.openai.apiKey,
+        "https://api.openai.com/v1/chat/completions",
+        settings.openai.model,
+        rubricInferencePrompt(),
+        rubricInferenceUserPrompt(title, description),
+        0.3
+      );
+    } else if (provider === "qwen") {
+      raw = await requestOpenAIJson(
+        "Qwen",
+        settings.qwen.apiKey,
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        settings.qwen.model,
+        rubricInferencePrompt(),
+        rubricInferenceUserPrompt(title, description),
+        0.3
+      );
+    } else {
+      raw = await requestOpenAIJson(
+        "Moonshot",
+        settings.moonshot.apiKey,
+        "https://api.moonshot.cn/v1/chat/completions",
+        settings.moonshot.model,
+        rubricInferencePrompt(),
+        rubricInferenceUserPrompt(title, description),
+        0.3
+      );
+    }
+
+    if (raw?.rubric?.length) {
+      return raw.rubric
+        .filter((r) => r.skillId && r.description && typeof r.score === "number" && r.score > 0)
+        .map((r) => ({
+          skillId: r.skillId!,
+          description: r.description!,
+          score: r.score!
+        }));
+    }
+    return null;
+  } catch (error) {
+    console.error("Rubric Inference Error:", error);
+    return null;
+  }
+};
+
+// ─── Public API ───
+
 /**
- * AI 只负责标签识别，程序统一计算分数。
+ * AI 自动推断题目考察的能力点（Rubric）。
+ * 用于旧题兼容：无 rubric 的题目可通过此函数自动生成评分标准。
  */
-export const gradeQuestion = async (
+export const inferRubricForQuestion = async (
+  title: string,
+  description: string,
+  provider: AiProvider = "deepseek"
+): Promise<SkillRubric[] | null> => {
+  const cacheKey = rubricCacheKey(title, description);
+  const cached = rubricCache.get(cacheKey);
+  if (cached) return cached;
+
+  const rubric = await callRubricInference(provider, title, description);
+  if (rubric && rubric.length > 0) {
+    rubricCache.set(cacheKey, rubric);
+  }
+  return rubric;
+};
+
+/**
+ * 基于 Rubric 的能力完成度评分（核心评分函数）。
+ */
+export const gradeQuestionWithRubric = async (
   title: string,
   description: string,
   code: string,
+  rubric: SkillRubric[],
   provider: AiProvider = "deepseek"
 ): Promise<GradingResult> => {
   if (!isMeaningfulCode(code)) {
@@ -910,22 +1258,25 @@ export const gradeQuestion = async (
 
   const settings = getAiSettings();
   const key = settings[provider].apiKey;
-  const cloudRaw = await requestCloudJsonObject<RawGradingResponse>(
+
+  const cloudRaw = await requestCloudJsonObject<RawSkillGradingResponse>(
     provider,
     "grading",
-    gradingClassifierPrompt(),
-    gradingUserPrompt(title, description, code),
+    skillGradingPrompt(rubric),
+    skillGradingUserPrompt(title, description, code),
     0.1
   );
   if (cloudRaw) {
-    const detectedTags = normalizeDetectedTags(cloudRaw.detected_tags);
-    return createResultFromSummary(
-      !!cloudRaw.path_hit,
-      detectedTags,
+    const skillCompletions = normalizeSkillCompletions(cloudRaw.skill_completions, rubric);
+    const lightDeductions = normalizeLightDeductions(cloudRaw.light_deductions);
+    return createSkillResultFromSummary(
+      rubric,
+      skillCompletions,
+      lightDeductions,
       {
-        highlights: cloudRaw.feedback?.highlights?.trim() || "??????????????????",
-        mainIssues: cloudRaw.feedback?.main_issues?.trim() || "??????????????????",
-        nextSteps: cloudRaw.feedback?.suggestions?.trim() || "????????????????????"
+        highlights: cloudRaw.feedback?.highlights?.trim() || "你已经做出了有效尝试，值得肯定。",
+        mainIssues: cloudRaw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。",
+        nextSteps: cloudRaw.feedback?.suggestions?.trim() || "建议先修正明显错误，再重新运行检查结果。"
       },
       { correctedAnswer: cloudRaw.corrected_answer }
     );
@@ -941,55 +1292,41 @@ export const gradeQuestion = async (
   }
 
   try {
-    let raw: RawGradingResponse;
+    let raw: RawSkillGradingResponse;
     if (provider === "gemini") {
-      raw = await classifyWithGemini(settings.gemini.apiKey, settings.gemini.model, title, description, code);
+      raw = await classifySkillWithGemini(settings.gemini.apiKey, settings.gemini.model, title, description, code, rubric);
     } else if (provider === "deepseek") {
-      raw = await classifyWithOpenAICompatible(
-        "Deepseek",
-        settings.deepseek.apiKey,
-        "https://api.deepseek.com/chat/completions",
-        settings.deepseek.model,
-        title,
-        description,
-        code
+      raw = await classifySkillWithOpenAICompatible(
+        "Deepseek", settings.deepseek.apiKey,
+        "https://api.deepseek.com/chat/completions", settings.deepseek.model,
+        title, description, code, rubric
       );
     } else if (provider === "openai") {
-      raw = await classifyWithOpenAICompatible(
-        "OpenAI",
-        settings.openai.apiKey,
-        "https://api.openai.com/v1/chat/completions",
-        settings.openai.model,
-        title,
-        description,
-        code
+      raw = await classifySkillWithOpenAICompatible(
+        "OpenAI", settings.openai.apiKey,
+        "https://api.openai.com/v1/chat/completions", settings.openai.model,
+        title, description, code, rubric
       );
     } else if (provider === "qwen") {
-      raw = await classifyWithOpenAICompatible(
-        "Qwen",
-        settings.qwen.apiKey,
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-        settings.qwen.model,
-        title,
-        description,
-        code
+      raw = await classifySkillWithOpenAICompatible(
+        "Qwen", settings.qwen.apiKey,
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", settings.qwen.model,
+        title, description, code, rubric
       );
     } else {
-      raw = await classifyWithOpenAICompatible(
-        "Moonshot",
-        settings.moonshot.apiKey,
-        "https://api.moonshot.cn/v1/chat/completions",
-        settings.moonshot.model,
-        title,
-        description,
-        code
+      raw = await classifySkillWithOpenAICompatible(
+        "Moonshot", settings.moonshot.apiKey,
+        "https://api.moonshot.cn/v1/chat/completions", settings.moonshot.model,
+        title, description, code, rubric
       );
     }
 
-    const detectedTags = normalizeDetectedTags(raw.detected_tags);
-    return createResultFromSummary(
-      !!raw.path_hit,
-      detectedTags,
+    const skillCompletions = normalizeSkillCompletions(raw.skill_completions, rubric);
+    const lightDeductions = normalizeLightDeductions(raw.light_deductions);
+    return createSkillResultFromSummary(
+      rubric,
+      skillCompletions,
+      lightDeductions,
       {
         highlights: raw.feedback?.highlights?.trim() || "你已经做出了有效尝试，值得肯定。",
         mainIssues: raw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。",
@@ -1006,7 +1343,57 @@ export const gradeQuestion = async (
   }
 };
 
-const TAG_WEAKNESS_COPY: Record<DeductionCode, string> = {
+const isMeaningfulCode = (code: string): boolean => {
+  const compact = code.replace(/\s+/g, "").toLowerCase();
+  if (!compact) return false;
+  const placeholders = ["pass", "todo", "solution()", "defsolution():pass"];
+  return !placeholders.includes(compact);
+};
+
+/**
+ * 统一的评分入口（兼容旧接口）。
+ * 内部自动处理：有 rubric 直接用，无 rubric 先 AI 推断再评分。
+ */
+export const gradeQuestion = async (
+  title: string,
+  description: string,
+  code: string,
+  provider: AiProvider = "deepseek"
+): Promise<GradingResult> => {
+  if (!isMeaningfulCode(code)) {
+    return createBlankGradingResult();
+  }
+
+  // Try to get rubric: first from cache, then infer if needed
+  const cacheKey = rubricCacheKey(title, description);
+  let rubric = rubricCache.get(cacheKey);
+
+  if (!rubric) {
+    const inferred = await callRubricInference(provider, title, description);
+    if (inferred && inferred.length > 0) {
+      rubricCache.set(cacheKey, inferred);
+      rubric = inferred as SkillRubric[] | undefined;
+    }
+  }
+
+  // If still no rubric (AI inference failed), use a minimal fallback rubric
+  if (!rubric || rubric.length === 0) {
+    rubric = [
+      { skillId: "input_processing", description: "输入处理", score: 20 },
+      { skillId: "core_logic", description: "核心逻辑实现", score: 50 },
+      { skillId: "output_result", description: "输出结果", score: 30 }
+    ]; // scores sum to 100%
+  }
+
+  return gradeQuestionWithRubric(title, description, code, rubric, provider);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Exam review summary (refactored for skill-based grading)
+// ═══════════════════════════════════════════════════════════════
+
+const TAG_WEAKNESS_COPY: Record<string, string> = {
+  SYN_PARSE: "代码结构还不够稳定，缩进或代码块组织需要再练习。",
   SYN_MINOR: "容易在符号、拼写这类小语法问题上丢分。",
   SYN_BLOCK: "代码结构还不够稳定，缩进或代码块组织需要再练习。",
   LOG_MISS: "核心解题步骤偶尔缺失，说明还需要加强题意拆解。",
@@ -1016,10 +1403,11 @@ const TAG_WEAKNESS_COPY: Record<DeductionCode, string> = {
   STY_NAME: "命名可读性偏弱，后续维护和检查会更吃力。"
 };
 
-const TAG_SUGGESTION_COPY: Record<DeductionCode, string> = {
+const TAG_SUGGESTION_COPY: Record<string, string> = {
+  SYN_PARSE: "先练习缩进、函数定义和代码块结构，再追求复杂逻辑。",
   SYN_MINOR: "提交前重点检查括号、冒号和关键字拼写。",
   SYN_BLOCK: "先练习缩进、函数定义和代码块结构，再追求复杂逻辑。",
-  LOG_MISS: "做题时先写出“输入-处理-输出”三步框架，再补充细节。",
+  LOG_MISS: "做题时先写出「输入-处理-输出」三步框架，再补充细节。",
   LOG_WRONG: "多用小样例手算，验证边界和公式方向是否正确。",
   RUN_VAR: "统一变量命名，运行前从上到下核对变量是否都已定义。",
   RUN_TYPE: "对输入值先确认类型，必要时显式使用 int()、float() 或 str() 转换。",
@@ -1058,45 +1446,96 @@ export const buildExamReviewSummary = (
   }
 
   const avgScore = graded.reduce((sum, item) => sum + item.result.score, 0) / graded.length;
-  const pathHitCount = graded.filter((item) => item.result.pathHit).length;
+
+  // Find questions with high scores
   const highScoreTitles = graded
     .filter((item) => item.result.score >= 80)
     .slice(0, 2)
     .map((item) => `《${item.question.title}》`);
 
-  const tagCounter = new Map<DeductionCode, number>();
-  graded.forEach((item) => {
-    item.result.detectedTags.forEach((tag) => {
-      tagCounter.set(tag.code, (tagCounter.get(tag.code) || 0) + 1);
-    });
-  });
+  // Find lowest skill completions across all questions
+  const lowSkills: { desc: string; avgCompletion: number }[] = [];
+  const skillAccumulator = new Map<string, { total: number; count: number; desc: string }>();
 
-  const sortedTags = [...tagCounter.entries()].sort((a, b) => b[1] - a[1]);
-  const topTags = sortedTags.slice(0, 3).map(([code]) => code);
+  for (const { result } of graded) {
+    for (const comp of result.skillCompletions) {
+      const rubricDef = result.rubricUsed.find((r) => r.skillId === comp.skillId);
+      const desc = rubricDef?.description || comp.skillId;
+      const key = comp.skillId;
+      if (!skillAccumulator.has(key)) {
+        skillAccumulator.set(key, { total: 0, count: 0, desc });
+      }
+      const acc = skillAccumulator.get(key)!;
+      acc.total += comp.completion;
+      acc.count += 1;
+    }
+  }
 
+  for (const [, acc] of skillAccumulator) {
+    lowSkills.push({ desc: acc.desc, avgCompletion: acc.total / acc.count });
+  }
+  lowSkills.sort((a, b) => a.avgCompletion - b.avgCompletion);
+
+  // Light deduction frequency
+  const dedCounter = new Map<string, number>();
+  for (const { result } of graded) {
+    for (const ded of result.lightDeductions) {
+      dedCounter.set(ded.code, (dedCounter.get(ded.code) || 0) + 1);
+    }
+  }
+  const sortedDeds = [...dedCounter.entries()].sort((a, b) => b[1] - a[1]);
+  const topDedCodes = sortedDeds.slice(0, 3).map(([code]) => code);
+
+  // Build strengths
   const strengths: string[] = [];
-  if (pathHitCount / graded.length >= 0.7) {
-    strengths.push("大多数题目都写出了关键路径，说明你已经知道该从哪里开始解题。");
+  const highCompletionSkills = lowSkills.filter((s) => s.avgCompletion >= 0.7).length;
+  const totalSkills = lowSkills.length;
+  if (totalSkills > 0 && highCompletionSkills / totalSkills >= 0.5) {
+    strengths.push("多数能力点完成度较高，说明解题思路比较清晰。");
   }
   if (highScoreTitles.length > 0) {
     strengths.push(`在 ${highScoreTitles.join("、")} 这类题目上，你已经能比较稳定地完成主要逻辑。`);
   }
-  if (sortedTags.every(([code]) => !String(code).startsWith("SYN"))) {
+  if (sortedDeds.every(([code]) => code !== "SYN_PARSE" && code !== "SYN_MINOR")) {
     strengths.push("整体语法基础比较稳定，明显的结构性语法问题不多。");
   }
   if (strengths.length === 0) {
     strengths.push("你已经在每道题上做出了尝试，这本身就是建立编程能力的重要一步。");
   }
 
-  const weaknesses =
-    topTags.length > 0
-      ? topTags.map((code) => TAG_WEAKNESS_COPY[code])
-      : ["本次没有检测到集中的失分标签，说明主要问题更偏向细节波动。"];
+  // Build weaknesses
+  const weaknesses: string[] = [];
+  for (const skill of lowSkills.slice(0, 3)) {
+    if (skill.avgCompletion < 0.6) {
+      weaknesses.push(`"${skill.desc}"能力点完成度偏低（${Math.round(skill.avgCompletion * 100)}%），需要重点加强。`);
+    }
+  }
+  for (const code of topDedCodes) {
+    const copy = TAG_WEAKNESS_COPY[code];
+    if (copy && !weaknesses.includes(copy)) {
+      weaknesses.push(copy);
+    }
+  }
+  if (weaknesses.length === 0) {
+    weaknesses.push("本次没有检测到集中的失分点，说明主要问题更偏向细节波动。");
+  }
 
-  const nextSteps =
-    topTags.length > 0
-      ? [...new Set(topTags.map((code) => TAG_SUGGESTION_COPY[code]))]
-      : ["继续保持当前节奏，多做几道类似题巩固解题流程。"];
+  // Build next steps
+  const nextSteps: string[] = [];
+  for (const skill of lowSkills.slice(0, 2)) {
+    if (skill.avgCompletion < 0.7) {
+      nextSteps.push(`重点练习"${skill.desc}"相关题目，提升该能力点的熟练度。`);
+    }
+  }
+  for (const code of topDedCodes) {
+    const copy = TAG_SUGGESTION_COPY[code];
+    if (copy && !nextSteps.includes(copy)) {
+      nextSteps.push(copy);
+    }
+  }
+  if (nextSteps.length === 0) {
+    nextSteps.push("继续保持当前节奏，多做几道类似题巩固解题流程。");
+  }
 
   let overview = "本次作答整体表现比较均衡。";
   if (avgScore >= 85) {

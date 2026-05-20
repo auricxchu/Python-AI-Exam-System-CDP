@@ -5,8 +5,8 @@ import {
   Database, Filter, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Cloud, CloudUpload, RefreshCw, Loader2, Key,
   FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon, Wand2
 } from 'lucide-react';
-import { ExamConfig, Question, Difficulty, ExamAssemblyMode } from '../types';
-import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings } from '../services/aiService';
+import { ExamConfig, Question, Difficulty, ExamAssemblyMode, SkillRubric } from '../types';
+import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings, inferRubricForQuestion } from '../services/aiService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, hashAdminPassword, verifyAdminPassword } from '../services/adminAuthService';
 import { Button, Input, Badge } from './ui';
 import Modal from './Modal';
@@ -78,7 +78,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Edit/Add Question State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [questionForm, setQuestionForm] = useState<Partial<Question>>({
-    title: "", difficulty: "简单", description: "", template: "def solution():\n    pass", imageUrl: ""
+    title: "", difficulty: "简单", description: "", template: "def solution():\n    pass", imageUrl: "", rubric: []
   });
   
   // New: Deferred Upload State
@@ -468,17 +468,134 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setNotif({ msg: "AI 已生成题目草稿", type: "success" });
   };
 
+  const handleAiInferRubric = async () => {
+    if (!questionForm.title || !questionForm.description) {
+      setNotif({ msg: "请先填写题目名称和描述", type: "warning" });
+      return;
+    }
+    setAiGenerating(true);
+    const rubric = await inferRubricForQuestion(
+      questionForm.title,
+      questionForm.description,
+      aiProvider
+    );
+    setAiGenerating(false);
+    if (rubric && rubric.length > 0) {
+      // Normalize to 100% total
+      const total = rubric.reduce((s, r) => s + r.score, 0);
+      const normalized = total > 0
+        ? rubric.map(r => ({ ...r, score: Math.round((r.score / total) * 100) }))
+        : rubric.map((r, i) => ({ ...r, score: i === 0 ? 100 : 0 }));
+      // Fix rounding
+      const sum = normalized.reduce((s, r) => s + r.score, 0);
+      if (sum !== 100 && normalized.length > 0) {
+        normalized[0] = { ...normalized[0], score: normalized[0].score + (100 - sum) };
+      }
+      setQuestionForm(prev => ({ ...prev, rubric: normalized }));
+      setNotif({ msg: `AI 已推断 ${rubric.length} 个能力点`, type: "success" });
+    } else {
+      setNotif({ msg: "AI 推断失败，请手动添加能力点", type: "warning" });
+    }
+  };
+
+  const redistributePercents = (rubric: SkillRubric[], changedIndex: number, newValue: number): SkillRubric[] => {
+    const old = [...rubric];
+    const oldValue = old[changedIndex].score;
+    const diff = newValue - oldValue;
+    if (diff === 0) return old;
+
+    old[changedIndex] = { ...old[changedIndex], score: newValue };
+
+    const others = old.filter((_, i) => i !== changedIndex);
+    const othersTotal = others.reduce((s, r) => s + r.score, 0);
+
+    if (othersTotal <= 0) {
+      // Only one skill, just set to 100 and return
+      old[changedIndex] = { ...old[changedIndex], score: 100 };
+      return old;
+    }
+
+    // Distribute the difference proportionally among others
+    const updated = old.map((skill, i) => {
+      if (i === changedIndex) return skill;
+      const proportion = skill.score / othersTotal;
+      const newScore = Math.max(1, Math.round(skill.score - diff * proportion));
+      return { ...skill, score: newScore };
+    });
+
+    // Fix rounding errors: adjust the first other skill to make sum = 100
+    const sum = updated.reduce((s, r) => s + r.score, 0);
+    const firstOther = updated.findIndex((_, i) => i !== changedIndex);
+    if (firstOther >= 0 && sum !== 100) {
+      updated[firstOther] = { ...updated[firstOther], score: Math.max(1, updated[firstOther].score + (100 - sum)) };
+    }
+
+    return updated;
+  };
+
+  const handleAddRubricSkill = () => {
+    setQuestionForm(prev => {
+      const rubric = prev.rubric || [];
+      if (rubric.length === 0) {
+        return { ...prev, rubric: [{ skillId: `skill_${Date.now()}`, description: "", score: 100 }] };
+      }
+      // Give new skill 10%, reduce others proportionally
+      const reduced = rubric.map(r => ({ ...r, score: Math.round(r.score * 0.9) }));
+      // Fix rounding
+      const sum = reduced.reduce((s, r) => s + r.score, 0) + 10;
+      if (sum !== 100 && reduced.length > 0) {
+        reduced[0] = { ...reduced[0], score: Math.max(1, reduced[0].score + (90 - reduced.reduce((s, r) => s + r.score, 0))) };
+      }
+      return {
+        ...prev,
+        rubric: [...reduced, { skillId: `skill_${Date.now()}`, description: "", score: 10 }]
+      };
+    });
+  };
+
+  const handleUpdateRubricSkill = (index: number, field: 'description' | 'score', value: string) => {
+    setQuestionForm(prev => {
+      const rubric = [...(prev.rubric || [])];
+      if (!rubric[index]) return prev;
+      if (field === 'score') {
+        const newValue = Math.max(1, Math.min(99, parseInt(value) || 1));
+        return { ...prev, rubric: redistributePercents(rubric, index, newValue) };
+      } else {
+        rubric[index] = { ...rubric[index], description: value };
+        return { ...prev, rubric };
+      }
+    });
+  };
+
+  const handleRemoveRubricSkill = (index: number) => {
+    setQuestionForm(prev => {
+      const rubric = (prev.rubric || []).filter((_, i) => i !== index);
+      if (rubric.length === 0) return { ...prev, rubric };
+      // Redistribute the removed skill's % proportionally
+      const total = rubric.reduce((s, r) => s + r.score, 0);
+      if (total <= 0) {
+        const even = Math.round(100 / rubric.length);
+        return { ...prev, rubric: rubric.map((r, i) => ({ ...r, score: i === 0 ? 100 - even * (rubric.length - 1) : even })) };
+      }
+      const normalized = rubric.map(r => ({ ...r, score: Math.round((r.score / total) * 100) }));
+      const sum = normalized.reduce((s, r) => s + r.score, 0);
+      if (sum !== 100 && normalized.length > 0) {
+        normalized[0] = { ...normalized[0], score: normalized[0].score + (100 - sum) };
+      }
+      return { ...prev, rubric: normalized };
+    });
+  };
+
   const startEdit = (q: Question) => {
-    setQuestionForm(q);
+    setQuestionForm({ ...q, rubric: q.rubric || [] });
     setEditingId(q.id);
-    // Reset pending state when entering edit
     setPendingFile(null);
     setLocalPreviewUrl(null);
     setActiveTab('add');
   };
 
   const startAdd = () => {
-    setQuestionForm({title:"", difficulty:"简单", description:"", template: "def solution():\n    pass", imageUrl: ""});
+    setQuestionForm({title:"", difficulty:"简单", description:"", template: "def solution():\n    pass", imageUrl: "", rubric: []});
     setEditingId(null);
     setPendingFile(null);
     setLocalPreviewUrl(null);
@@ -1127,6 +1244,21 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                     </div>
                                 )}
                               </div>
+                              {q.rubric && q.rubric.length > 0 && (
+                                <div>
+                                  <span className="text-slate-400 text-xs font-medium">
+                                    能力点 ({q.rubric.length}项)
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {q.rubric.map((skill) => (
+                                      <span key={skill.skillId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-800 border border-slate-700 text-slate-300">
+                                        {skill.description}
+                                        <span className="text-slate-500">{skill.score}%</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               <div>
                                 <span className="text-slate-400 text-xs font-medium">代码模板</span>
                                 <pre className="bg-slate-950 p-3 rounded border border-slate-700 mt-1 font-mono text-xs text-green-400 overflow-x-auto">{q.template}</pre>
@@ -1284,6 +1416,127 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                 </div>
                              )}
                         </div>
+                   </div>
+
+                   {/* Rubric Editor — percentage-based */}
+                   <div className="shrink-0">
+                      <label className="block text-slate-400 text-xs mb-2 font-medium flex justify-between items-center">
+                        <span>能力点评分标准 (占比 %)</span>
+                        <span className={`text-[10px] font-bold ${
+                          (questionForm.rubric || []).reduce((s, r) => s + (r.score || 0), 0) === 100
+                            ? 'text-emerald-400'
+                            : 'text-amber-400'
+                        }`}>
+                          总占比: {(questionForm.rubric || []).reduce((s, r) => s + (r.score || 0), 0)}%
+                        </span>
+                      </label>
+
+                      {/* Stacked percentage bar */}
+                      {(questionForm.rubric || []).length > 0 && (
+                        <div className="mb-3">
+                          <div className="h-4 rounded-full overflow-hidden flex bg-slate-800 border border-slate-700">
+                            {(questionForm.rubric || []).map((skill, idx) => {
+                              const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-teal-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500', 'bg-pink-500', 'bg-lime-500'];
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`${colors[idx % colors.length]} h-full transition-all duration-300`}
+                                  style={{ width: `${Math.max(1, skill.score)}%` }}
+                                  title={`${skill.description || '未命名'}: ${skill.score}%`}
+                                />
+                              );
+                            })}
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                            {(questionForm.rubric || []).map((skill, idx) => {
+                              const colors = ['text-indigo-400', 'text-blue-400', 'text-teal-400', 'text-emerald-400', 'text-amber-400', 'text-rose-400', 'text-violet-400', 'text-cyan-400', 'text-pink-400', 'text-lime-400'];
+                              const dots = ['bg-indigo-500', 'bg-blue-500', 'bg-teal-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500', 'bg-pink-500', 'bg-lime-500'];
+                              return (
+                                <span key={idx} className="flex items-center gap-1 text-[10px]">
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${dots[idx % dots.length]}`} />
+                                  <span className={`${colors[idx % colors.length]} truncate max-w-[120px]`}>
+                                    {skill.description || `能力${idx + 1}`}
+                                  </span>
+                                  <span className="text-slate-500">{skill.score}%</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {(questionForm.rubric || []).length === 0 ? (
+                          <div className="text-xs text-slate-500 bg-slate-900/50 border border-dashed border-slate-700 rounded-lg px-4 py-3">
+                            未定义评分标准。可点击下方按钮手动添加或让 AI 推断。
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                            {(questionForm.rubric || []).map((skill, index) => (
+                              <div key={index} className="flex items-center gap-2 bg-slate-900/50 border border-slate-700/50 rounded-lg px-3 py-2 group">
+                                <span className="text-[10px] text-slate-600 w-5 shrink-0">{index + 1}</span>
+                                <input
+                                  type="text"
+                                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                  value={skill.description}
+                                  onChange={(e) => handleUpdateRubricSkill(index, 'description', e.target.value)}
+                                  placeholder="能力描述，如：遍历数组"
+                                />
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <input
+                                    type="range"
+                                    className="w-20 h-1 accent-blue-500 cursor-pointer"
+                                    value={skill.score}
+                                    onChange={(e) => handleUpdateRubricSkill(index, 'score', e.target.value)}
+                                    min={1}
+                                    max={99}
+                                    title={`${skill.score}%`}
+                                  />
+                                  <input
+                                    type="number"
+                                    className="w-12 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-white text-center focus:border-blue-500 outline-none"
+                                    value={skill.score || ''}
+                                    onChange={(e) => handleUpdateRubricSkill(index, 'score', e.target.value)}
+                                    min={1}
+                                    max={99}
+                                  />
+                                  <span className="text-[10px] text-slate-500 w-4">%</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRubricSkill(index)}
+                                  className="p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                  title="删除此能力点"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleAddRubricSkill}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 bg-slate-800/50 text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> 添加能力点
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAiInferRubric}
+                            disabled={aiGenerating}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                              aiGenerating
+                                ? 'border-slate-700 bg-slate-800/30 text-slate-500 cursor-not-allowed'
+                                : 'border-blue-500/30 bg-blue-500/10 text-blue-400 hover:text-blue-300 hover:border-blue-500/60'
+                            }`}
+                          >
+                            <Wand2 className="w-3.5 h-3.5" />
+                            {aiGenerating ? '推断中...' : 'AI 推断能力点'}
+                          </button>
+                        </div>
+                      </div>
                    </div>
 
                    {/* Code Template: Flex 1 */}

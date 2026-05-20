@@ -1,21 +1,22 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 
-export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { isLoading?: boolean, variant?: 'primary' | 'secondary' | 'danger' | 'success' }> = ({ 
-  children, 
-  className = "", 
-  isLoading, 
-  variant = 'primary', 
-  disabled, 
-  ...props 
+export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { isLoading?: boolean, variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'info' }> = ({
+  children,
+  className = "",
+  isLoading,
+  variant = 'primary',
+  disabled,
+  ...props
 }) => {
   const baseStyles = "px-4 py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
-  
+
   const variants = {
-    primary: "bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-900/20 text-white",
-    secondary: "bg-slate-700 hover:bg-slate-600 text-white border border-slate-600",
-    danger: "bg-red-600 hover:bg-red-500 hover:shadow-lg hover:shadow-red-900/20 text-white",
-    success: "bg-green-600 hover:bg-green-500 hover:shadow-lg hover:shadow-green-900/20 text-white",
+    primary: "bg-blue-600 hover:bg-blue-500 text-white",
+    secondary: "bg-slate-700 hover:bg-slate-500 text-white border border-slate-600",
+    danger: "bg-red-600 hover:bg-red-500 text-white",
+    success: "bg-green-600 hover:bg-green-500 text-white",
+    info: "bg-blue-500/20 hover:bg-blue-400/20 border border-blue-500/30 text-blue-300",
   };
 
   return (

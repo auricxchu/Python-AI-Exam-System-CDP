@@ -5,7 +5,7 @@ import { teacherSessionService } from "./teacherSessionService";
 
 const ADMIN_PASSWORD_HEADER = "x-admin-password";
 
-type CloudJsonSchemaKind = "question_generation" | "reference_answer" | "grading";
+type CloudJsonSchemaKind = "question_generation" | "reference_answer" | "grading" | "rubric_inference";
 
 interface ProxyPingResponse {
   ok: boolean;
