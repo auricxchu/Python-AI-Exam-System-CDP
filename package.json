@@ -41,6 +41,7 @@
     "appId": "com.exam.system",
     "icon": "app_icon.ico",
     "productName": "Python智能考试系统",
+    "artifactName": "PythonExamSystem-${version}-${arch}.${ext}",
     "files": [
       "dist/**/*",
       "electron/**/*"
