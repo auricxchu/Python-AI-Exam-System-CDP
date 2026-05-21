@@ -85,6 +85,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const rubricBarRef = useRef<HTMLDivElement>(null);
+  const [draggingRubricBoundary, setDraggingRubricBoundary] = useState<number | null>(null);
+  const rubricMinSegmentPercent = 2;
 
   // Modals & Previews
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -131,6 +136,20 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       return () => clearTimeout(timer);
     }
   }, [notif]);
+
+  const resizeTextareaToContent = (textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    resizeTextareaToContent(descriptionTextareaRef.current);
+  }, [questionForm.description]);
+
+  useEffect(() => {
+    resizeTextareaToContent(templateTextareaRef.current);
+  }, [questionForm.template]);
 
   useEffect(() => {
     setApiSettingsDraft(apiSettings);
@@ -566,6 +585,98 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       }
     });
   };
+
+  const getNearestRubricBoundaryIndex = (clientX: number) => {
+    const rubric = questionForm.rubric || [];
+    const bar = rubricBarRef.current;
+    if (!bar || rubric.length < 2) return null;
+
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    let cumulative = 0;
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < rubric.length - 1; index += 1) {
+      cumulative += rubric[index].score || 0;
+      const boundaryX = rect.width * (cumulative / 100);
+      const distance = Math.abs(x - boundaryX);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    }
+
+    return nearestIndex;
+  };
+
+  const updateRubricBoundaryFromClientX = (boundaryIndex: number, clientX: number) => {
+    const bar = rubricBarRef.current;
+    if (!bar) return;
+
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    setQuestionForm(prev => {
+      const rubric = [...(prev.rubric || [])];
+      const leftSkill = rubric[boundaryIndex];
+      const rightSkill = rubric[boundaryIndex + 1];
+      if (!leftSkill || !rightSkill) return prev;
+
+      const beforeBoundaryTotal = rubric
+        .slice(0, boundaryIndex)
+        .reduce((sum, skill) => sum + (skill.score || 0), 0);
+      const pairTotal = (leftSkill.score || 0) + (rightSkill.score || 0);
+      if (pairTotal <= 1) return prev;
+
+      const pointerPercent = (Math.max(0, Math.min(rect.width, clientX - rect.left)) / rect.width) * 100;
+      const rawLeftScore = Math.round(pointerPercent - beforeBoundaryTotal);
+      const minSegmentPercent = pairTotal >= rubricMinSegmentPercent * 2 ? rubricMinSegmentPercent : 1;
+      const maxLeftScore = pairTotal - minSegmentPercent;
+      const leftScore = Math.max(minSegmentPercent, Math.min(maxLeftScore, rawLeftScore));
+      const rightScore = pairTotal - leftScore;
+
+      if (leftSkill.score === leftScore && rightSkill.score === rightScore) return prev;
+
+      rubric[boundaryIndex] = { ...leftSkill, score: leftScore };
+      rubric[boundaryIndex + 1] = { ...rightSkill, score: rightScore };
+      return { ...prev, rubric };
+    });
+  };
+
+  const handleRubricBarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+
+    const boundaryIndex = getNearestRubricBoundaryIndex(event.clientX);
+    if (boundaryIndex === null) return;
+
+    event.preventDefault();
+    setDraggingRubricBoundary(boundaryIndex);
+    updateRubricBoundaryFromClientX(boundaryIndex, event.clientX);
+  };
+
+  useEffect(() => {
+    if (draggingRubricBoundary === null) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      event.preventDefault();
+      updateRubricBoundaryFromClientX(draggingRubricBoundary, event.clientX);
+    };
+    const handleMouseUp = () => setDraggingRubricBoundary(null);
+
+    const previousCursor = document.body.style.cursor;
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingRubricBoundary]);
 
   const handleRemoveRubricSkill = (index: number) => {
     setQuestionForm(prev => {
@@ -1316,11 +1427,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         </div>
                    </div>
 
+                   <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-4">
                    {/* Description: Flex grow 2 to take more space */}
-                   <div className="flex-[2] flex flex-col min-h-0">
+                   <div className="flex flex-col">
                         <label className="block text-slate-400 text-xs mb-2 font-medium">题目描述</label>
-                        <textarea 
-                          className="w-full flex-1 bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none custom-scrollbar resize-none" 
+                        <textarea
+                          ref={descriptionTextareaRef}
+                          rows={8}
+                          className={`w-full border rounded-lg p-3 focus:border-blue-500 outline-none overflow-hidden resize-y ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'}`}
                           value={questionForm.description}
                           onChange={e => setQuestionForm({...questionForm, description: e.target.value})}
                           placeholder="请输入详细的题目描述..."
@@ -1434,23 +1548,50 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       {/* Stacked percentage bar */}
                       {(questionForm.rubric || []).length > 0 && (
                         <div className="mb-3">
-                          <div className="h-4 rounded-full overflow-hidden flex bg-slate-800 border border-slate-700">
-                            {(questionForm.rubric || []).map((skill, idx) => {
-                              const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-teal-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500', 'bg-pink-500', 'bg-lime-500'];
+                          <div
+                            ref={rubricBarRef}
+                            className={`relative h-3 rounded-full border cursor-col-resize select-none ${theme === 'light' ? 'bg-slate-200 border-slate-300' : 'bg-slate-800 border-slate-700'}`}
+                            onMouseDown={handleRubricBarMouseDown}
+                          >
+                            <div className="h-full rounded-full overflow-hidden flex">
+                              {(questionForm.rubric || []).map((skill, idx) => {
+                                const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-blue-600', 'bg-violet-500', 'bg-pink-500', 'bg-amber-700', 'bg-gray-500'];
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`${colors[idx % colors.length]} h-full ${draggingRubricBoundary === null ? 'transition-all duration-300' : ''}`}
+                                    style={{ width: `${Math.max(1, skill.score)}%` }}
+                                    title={`${skill.description || '未命名'}: ${skill.score}%`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            {(questionForm.rubric || []).slice(0, -1).map((skill, idx, rubric) => {
+                              const boundaryPercent = rubric
+                                .slice(0, idx + 1)
+                                .reduce((sum, item) => sum + (item.score || 0), 0);
                               return (
                                 <div
-                                  key={idx}
-                                  className={`${colors[idx % colors.length]} h-full transition-all duration-300`}
-                                  style={{ width: `${Math.max(1, skill.score)}%` }}
-                                  title={`${skill.description || '未命名'}: ${skill.score}%`}
+                                  key={`${skill.skillId}-${idx}-boundary`}
+                                  className={`absolute top-1/2 h-5 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-sm cursor-col-resize ${
+                                    draggingRubricBoundary === idx
+                                      ? theme === 'light'
+                                        ? 'bg-white border-blue-400 shadow-blue-400/40'
+                                        : 'bg-white border-blue-300 shadow-blue-500/50'
+                                      : theme === 'light'
+                                        ? 'bg-white/90 border-slate-400/80 hover:bg-white hover:border-blue-300'
+                                        : 'bg-slate-950/90 border-white/70 hover:bg-slate-100 hover:border-blue-300'
+                                  }`}
+                                  style={{ left: `${boundaryPercent}%` }}
+                                  title="拖动调整相邻能力点占比"
                                 />
                               );
                             })}
                           </div>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
                             {(questionForm.rubric || []).map((skill, idx) => {
-                              const colors = ['text-indigo-400', 'text-blue-400', 'text-teal-400', 'text-emerald-400', 'text-amber-400', 'text-rose-400', 'text-violet-400', 'text-cyan-400', 'text-pink-400', 'text-lime-400'];
-                              const dots = ['bg-indigo-500', 'bg-blue-500', 'bg-teal-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500', 'bg-pink-500', 'bg-lime-500'];
+                              const colors = ['text-red-400', 'text-orange-400', 'text-yellow-300', 'text-emerald-400', 'text-cyan-400', 'text-blue-400', 'text-violet-400', 'text-pink-400', 'text-amber-500', 'text-gray-400'];
+                              const dots = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-blue-600', 'bg-violet-500', 'bg-pink-500', 'bg-amber-700', 'bg-gray-500'];
                               return (
                                 <span key={idx} className="flex items-center gap-1 text-[10px]">
                                   <span className={`w-2 h-2 rounded-full shrink-0 ${dots[idx % dots.length]}`} />
@@ -1477,24 +1618,15 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                 <span className="text-[10px] text-slate-600 w-5 shrink-0">{index + 1}</span>
                                 <input
                                   type="text"
-                                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                  className={`flex-1 border rounded px-2 py-1 text-xs focus:border-blue-500 outline-none ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'}`}
                                   value={skill.description}
                                   onChange={(e) => handleUpdateRubricSkill(index, 'description', e.target.value)}
                                   placeholder="能力描述，如：遍历数组"
                                 />
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <input
-                                    type="range"
-                                    className="w-20 h-1 accent-blue-500 cursor-pointer"
-                                    value={skill.score}
-                                    onChange={(e) => handleUpdateRubricSkill(index, 'score', e.target.value)}
-                                    min={1}
-                                    max={99}
-                                    title={`${skill.score}%`}
-                                  />
-                                  <input
                                     type="number"
-                                    className="w-12 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-white text-center focus:border-blue-500 outline-none"
+                                    className={`w-12 border rounded px-1.5 py-1 text-xs text-center focus:border-blue-500 outline-none ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'}`}
                                     value={skill.score || ''}
                                     onChange={(e) => handleUpdateRubricSkill(index, 'score', e.target.value)}
                                     min={1}
@@ -1540,14 +1672,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                    </div>
 
                    {/* Code Template: Flex 1 */}
-                   <div className="flex-1 flex flex-col min-h-0">
+                   <div className="flex flex-col">
                       <label className="block text-slate-400 text-xs mb-2 font-medium">代码模板</label>
-                      <textarea 
-                        className="w-full flex-1 bg-slate-950 border border-slate-700 rounded-lg p-3 text-green-400 font-mono text-sm focus:border-blue-500 outline-none custom-scrollbar resize-none" 
+                      <textarea
+                        ref={templateTextareaRef}
+                        rows={8}
+                        className={`w-full border rounded-lg p-3 font-mono text-sm focus:border-blue-500 outline-none overflow-hidden resize-y ${theme === 'light' ? 'bg-white border-slate-300 text-green-700' : 'bg-slate-950 border-slate-700 text-green-400'}`}
                         value={questionForm.template}
                         onChange={e => setQuestionForm({...questionForm, template: e.target.value})}
                         spellCheck="false"
                       />
+                   </div>
                    </div>
 
                    <div className="shrink-0 pt-2">

@@ -1092,6 +1092,34 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
           onClose={() => setPreviewImage(null)}
         />
 
+        {/* Top-right toolbar */}
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 md:top-8 md:right-8 z-20 flex items-center gap-2">
+          <button
+            onClick={onToggleTheme}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none ${
+              isLightTheme
+                ? 'border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400'
+                : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+            }`}
+            title={theme === 'light' ? '切换到深色' : '切换到浅色'}
+          >
+            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            <span>{theme === 'light' ? '深色' : '浅色'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setScoringInfoOpen(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none ${
+              isLightTheme
+                ? 'border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300'
+                : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-blue-400 hover:border-blue-500/40'
+            }`}
+            title="评分系统说明"
+          >
+            <Info className="w-4 h-4" /> 评分说明
+          </button>
+        </div>
+
         {/* Content layout — fills viewport */}
         <div className="absolute inset-0 flex gap-4 sm:gap-6 p-4 sm:p-6 md:p-8 animate-in fade-in zoom-in-95 duration-500">
           {/* Left column — no scroll */}
@@ -1243,18 +1271,6 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                     <p className={`text-sm ${textMutedClass}`}>展开后可查看题目内容、扣分依据、考生答案与 AI 参考答案。</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setScoringInfoOpen(true)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                        isLightTheme
-                          ? 'border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300'
-                          : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:text-blue-400 hover:border-blue-500/40'
-                      }`}
-                      title="评分系统说明"
-                    >
-                      <Info className="w-3.5 h-3.5" /> 评分说明
-                    </button>
                     <div className={countPillClass}>
                       共 {questions.length} 题
                     </div>
