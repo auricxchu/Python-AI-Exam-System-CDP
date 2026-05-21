@@ -56,3 +56,26 @@ export const Badge: React.FC<{ children: React.ReactNode, color: 'green' | 'yell
     </span>
   );
 };
+
+export const ToolbarButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { 
+  theme: 'light' | 'dark';
+  active?: boolean;
+}> = ({ children, className = "", theme, active, ...props }) => {
+  const base = "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none";
+  const lightClasses = active 
+    ? 'border-blue-300 bg-blue-50 text-blue-700' 
+    : 'border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400';
+  const darkClasses = active
+    ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+    : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600';
+  
+  return (
+    <button
+      type="button"
+      className={`${base} ${theme === 'light' ? lightClasses : darkClasses} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+};

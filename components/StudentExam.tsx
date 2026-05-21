@@ -4,7 +4,7 @@ import {
   Play, Send, Clock, Flag, FileText, CheckCircle, LogOut, Loader2, ChevronRight, ChevronDown, User, CloudUpload, Download, FileCheck, AlertTriangle, Power, AlertCircle, Wifi, WifiOff, ZoomIn, Command, Info, Sun, Moon, ShieldAlert, MessageSquare
 } from 'lucide-react';
 import { ExamConfig, Question, GradingResult, UserProfile, ExamReport, ExamReviewSummary } from '../types';
-import { Button } from './ui';
+import { Button, ToolbarButton } from './ui';
 import CodeEditor from './CodeEditor';
 import TerminalOutput from './TerminalOutput';
 import Modal from './Modal';
@@ -1093,35 +1093,26 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
         />
 
         {/* Top-right toolbar */}
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 md:top-8 md:right-8 z-20 flex items-center gap-2">
-          <button
+        <div className="absolute top-2 right-4 sm:top-3 sm:right-6 md:top-4 md:right-8 z-20 flex items-center gap-2">
+          <ToolbarButton
+            theme={theme}
             onClick={onToggleTheme}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none ${
-              isLightTheme
-                ? 'border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-400'
-                : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600'
-            }`}
             title={theme === 'light' ? '切换到深色' : '切换到浅色'}
           >
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             <span>{theme === 'light' ? '深色' : '浅色'}</span>
-          </button>
-          <button
-            type="button"
+          </ToolbarButton>
+          <ToolbarButton
+            theme={theme}
             onClick={() => setScoringInfoOpen(true)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none ${
-              isLightTheme
-                ? 'border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300'
-                : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-blue-400 hover:border-blue-500/40'
-            }`}
             title="评分系统说明"
           >
             <Info className="w-4 h-4" /> 评分说明
-          </button>
+          </ToolbarButton>
         </div>
 
-        {/* Content layout — fills viewport */}
-        <div className="absolute inset-0 flex gap-4 sm:gap-6 p-4 sm:p-6 md:p-8 animate-in fade-in zoom-in-95 duration-500">
+        {/* Content layout — fills viewport, leaves room for top-right toolbar */}
+        <div className="absolute inset-0 flex gap-4 sm:gap-6 pt-12 sm:pt-14 md:pt-16 p-4 sm:p-6 md:p-8 animate-in fade-in zoom-in-95 duration-500">
           {/* Left column — no scroll */}
           <div className="w-[340px] sm:w-[380px] md:w-[430px] shrink-0 flex flex-col overflow-y-auto custom-scrollbar">
               <div className={asideCardClass}>
@@ -1699,14 +1690,14 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
             
             <div className="flex items-center gap-6">
                 
-                <button
+                <ToolbarButton
+                  theme="dark"
                   onClick={onToggleTheme}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
                   title={theme === 'light' ? '切换到深色' : '切换到浅色'}
                 >
                   {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                   <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
-                </button>
+                </ToolbarButton>
 
                 {/* Network Status */}
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg select-none">

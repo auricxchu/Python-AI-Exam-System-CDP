@@ -9,7 +9,7 @@ import { AiProvider, AiProviderSettings, clearRuntimeAiSettings, clearStoredAiSe
 import { fetchCloudAiSettings, saveCloudAiSettings } from './services/aiCloudService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, verifyAdminPassword } from './services/adminAuthService';
 import { ExamConfig, Question, UserProfile } from './types';
-import { Button, Input } from './components/ui';
+import { Button, Input, ToolbarButton } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
 import { teacherSessionService } from './services/teacherSessionService';
@@ -631,14 +631,14 @@ const requestEnterMode = (nextMode: AppMode) => {
 
       {(mode === 'landing' || mode === 'teacher_login' || mode === 'student_login') && openingDone && (
         <div className="absolute top-4 right-4 z-50">
-          <button
+          <ToolbarButton
+            theme={theme}
             onClick={toggleTheme}
-            className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
             title={theme === 'light' ? '切换到深色' : '切换到浅色'}
           >
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
-          </button>
+          </ToolbarButton>
         </div>
       )}
 

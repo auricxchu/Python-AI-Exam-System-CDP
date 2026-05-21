@@ -8,7 +8,7 @@ import {
 import { ExamConfig, Question, Difficulty, ExamAssemblyMode, SkillRubric } from '../types';
 import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings, inferRubricForQuestion } from '../services/aiService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, hashAdminPassword, verifyAdminPassword } from '../services/adminAuthService';
-import { Button, Input, Badge } from './ui';
+import { Button, Input, Badge, ToolbarButton } from './ui';
 import Modal from './Modal';
 import ImageModal from './ImageModal';
 import CachedImage from './CachedImage';
@@ -1002,34 +1002,34 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
            )}
          </div>
          <div className="flex items-center gap-2 text-slate-400">
-           <button
+           <ToolbarButton
+             theme={theme}
              onClick={onToggleTheme}
-             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
            >
              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
              <span className="text-xs font-medium">{theme === 'light' ? '深色' : '浅色'}</span>
-           </button>
-           <button
+           </ToolbarButton>
+           <ToolbarButton
+             theme={theme}
              onClick={() => setApiSettingsOpen(true)}
-             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
            >
              <Settings className="w-4 h-4" />
              <span className="text-xs font-medium">AI API 设置</span>
-           </button>
-           <button
+           </ToolbarButton>
+           <ToolbarButton
+             theme={theme}
              onClick={() => setPasswordModalOpen(true)}
-             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
            >
              <Key className="w-4 h-4" />
              <span className="text-xs font-medium">修改管理密码</span>
-           </button>
-           <button
+           </ToolbarButton>
+           <ToolbarButton
+             theme={theme}
              onClick={onExit}
-             className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors select-none"
            >
              <LogOut className="w-4 h-4" />
              <span className="text-xs font-medium">返回首页</span>
-           </button>
+           </ToolbarButton>
          </div>
       </div>
 
