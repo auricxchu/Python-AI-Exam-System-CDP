@@ -1,7 +1,7 @@
 import React from 'react';
-import { RefreshCw, Download, ArrowRight, X, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Download, ArrowRight, X, AlertTriangle, CheckCircle } from 'lucide-react';
 
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'up-to-date';
 
 interface UpdateNotificationProps {
   status: UpdateStatus;
@@ -51,6 +51,7 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({
       {/* Icon */}
       <div className="flex-shrink-0">
         {status === 'checking' && <RefreshCw className={`w-5 h-5 animate-spin ${textSecondary}`} />}
+        {status === 'up-to-date' && <CheckCircle className="w-5 h-5 text-green-500" />}
         {status === 'available' && <Download className={`w-5 h-5 ${textSecondary}`} />}
         {status === 'downloading' && <Download className={`w-5 h-5 animate-pulse text-blue-500`} />}
         {status === 'downloaded' && <ArrowRight className="w-5 h-5 text-green-500" />}
@@ -61,6 +62,12 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({
       <div className="flex-1 min-w-0">
         {status === 'checking' && (
           <p className={`text-sm font-medium ${textPrimary}`}>正在检查更新...</p>
+        )}
+
+        {status === 'up-to-date' && (
+          <p className={`text-sm font-medium text-green-600 dark:text-green-400`}>
+            已是最新版本
+          </p>
         )}
 
         {status === 'available' && (

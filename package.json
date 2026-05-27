@@ -1,7 +1,7 @@
 {
   "name": "python-ai-exam-system",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Python AI Intelligent Exam System",
   "author": "Exam System Team",
   "main": "electron/main.js",

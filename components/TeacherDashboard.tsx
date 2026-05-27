@@ -30,7 +30,6 @@ interface TeacherDashboardProps {
   isCheckingProviders: boolean;
   onSaveApiSettings: (settings: AiProviderSettings) => Promise<{ success: boolean; error?: string }>;
   onCheckProviders: () => void;
-  onCheckUpdate: () => void;
 }
 
 const providerDocs: Record<AiProvider, string> = {
@@ -52,8 +51,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   providerStatus,
   isCheckingProviders,
   onSaveApiSettings,
-  onCheckProviders,
-  onCheckUpdate
+  onCheckProviders
 }) => {
   // State
   const [localConfig, setLocalConfig] = useState<ExamConfig>(config);
@@ -984,7 +982,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* Notification Toast */}
       {notif && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg shadow-xl border flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${notif.type === 'success' ? 'bg-green-600/90 border-green-500' : 'bg-orange-600/90 border-orange-500'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${notif.type === 'success' ? 'bg-green-600/90' : 'bg-orange-600/90'}`}>
            <div className="bg-white/20 p-1 rounded-full">{notif.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}</div>
            <span className="font-bold text-sm text-white">{notif.msg}</span>
         </div>
@@ -1004,14 +1002,6 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
            )}
          </div>
          <div className="flex items-center gap-2 text-slate-400">
-           <ToolbarButton
-             theme={theme}
-             onClick={onCheckUpdate}
-             title="检查更新"
-           >
-             <RefreshCw className="w-4 h-4" />
-             <span className="text-xs font-medium">检查更新</span>
-           </ToolbarButton>
            <ToolbarButton
              theme={theme}
              onClick={onToggleTheme}
