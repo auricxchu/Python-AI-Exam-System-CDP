@@ -11,6 +11,7 @@
 - **Supabase 存储优化**：报告路径改为 `学号/考试名称/时间_文件`，按考试场次分子目录
 - **TXT 成绩单增强**：每题新增 `[题目内容]` 段落，包含完整题目描述
 - **cloudService 扩展**：新增 `fetchExamReports()` 查询和 `fetchReportBlob()` 文件获取方法
+- **修复**：成绩预览中题目配图改用 CachedImage 组件，修复 Electron 环境下图片加载失败
 
 ## v1.3.0 (2026-05-27)
 
