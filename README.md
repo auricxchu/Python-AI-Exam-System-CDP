@@ -105,6 +105,10 @@ npm run dist
 |---|---|
 | Teacher / 教师 | `admin` |
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Credits / 鸣谢
 
 Built with the help of multiple AI models — Gemini (design system), Codex / GPT-5.x (feature implementation), Claude Code (bug fixing & review), and GLM (feedback module).
