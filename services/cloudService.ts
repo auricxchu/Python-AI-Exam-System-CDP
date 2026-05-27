@@ -199,7 +199,7 @@ export const cloudService = {
       const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
       // Sanitize report filename
       const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const safeExamTitle = jsonReport.examTitle.replace(/[/\\?%*:|"<>]/g, '_').substring(0, 80);
+      const safeExamTitle = jsonReport.examTitle.replace(/[^a-zA-Z0-9一-鿿._-]/g, '_').substring(0, 80);
       const filePath = `${studentId}/${safeExamTitle}/${Date.now()}_${sanitizedFilename}`;
       
       const { data: uploadData, error: uploadError } = await supabase
