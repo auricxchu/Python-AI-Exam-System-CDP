@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.7 (2026-05-27)
+
+### 修复
+
+- **更新日志显示修复**：GitHub Release body 为 HTML 格式，改为直接渲染 HTML 而非 Markdown 解析
+
 ## v1.2.6 (2026-05-27)
 
 ### 修复
