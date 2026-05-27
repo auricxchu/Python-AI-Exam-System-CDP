@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 (2026-05-27)
+
+### 自动更新支持
+
+- **electron-updater 集成**：新增基于 GitHub Releases 的自动更新机制，主进程 `electron/main.js` 集成 `electron-updater`，支持检测、下载、重启安装完整流程
+- **检查更新按钮**：首页右上角深浅切换按钮左侧新增"检查更新"按钮，教师面板右上角同步增加入口
+- **开屏自动检查**：开屏动画结束后自动静默检查更新，有更新才通知，无更新不打扰
+- **强制/可选更新**：主版本号或次版本号变化时强制更新（不可跳过），修订号变化时可选更新（可跳过）
+- **更新通知 UI**：顶部横幅通知组件，支持三种状态——发现新版本/下载进度/下载完成，深浅主题适配
+- **考试模式保护**：考试中收到更新通知暂存不弹出，交卷退出后再提示
+- **私有仓库支持**：通过 `GH_TOKEN` 环境变量支持私有 GitHub 仓库的更新检查
+- **一键重启**：下载完成后点击"立即重启"自动安装更新
+- **CI 发布流程**：GitHub Actions 改用 `electron-builder --publish always`，推送 `v*` 标签自动构建 macOS DMG 和 Windows EXE，并上传 `latest.yml` 更新元数据
 
 ### 网络检测与离线行为优化
 
@@ -104,7 +116,7 @@
 
 ---
 
-## Unreleased — Cross-platform & Bugfix Sprint
+### Cross-platform & Bugfix Sprint
 
 *Bug 修复与交叉审查由 Claude Code (Deepseek-v4-pro) 与 Codex 协同完成；反馈工单由 Zhipu GLM-5.1 实现*
 
