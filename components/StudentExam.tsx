@@ -668,7 +668,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     const finishedAt = new Date().toISOString();
     setExamFinishedAt(finishedAt);
     const txtContent = generateTxtReport(finalCalculatedScore, newResults, user.joinedAt, finishedAt, computedReviewSummary);
-    const filename = `${user.name}_${user.studentId}_ExamReport.txt`;
+    const filename = `${user.studentId}_${user.name}_ExamReport.txt`;
     setReportExportMeta({ filename, content: txtContent });
     
     // Step 3: Cloud Upload

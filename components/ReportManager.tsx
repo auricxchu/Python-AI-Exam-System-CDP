@@ -110,7 +110,7 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
   };
 
   const downloadSingle = async (report: ExamReportRow) => {
-    const filename = `${report.student_name}_${report.student_id}_成绩单.txt`;
+    const filename = `${report.student_id}_${report.student_name}_成绩单.txt`;
     if (report.report_url) {
       const text = await cloudService.fetchReportBlob(report.report_url);
       if (text) {
@@ -134,7 +134,7 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
       } else {
         const zip = new JSZip();
         for (const report of selected) {
-          const filename = `${report.student_name}_${report.student_id}_成绩单.txt`;
+          const filename = `${report.student_id}_${report.student_name}_成绩单.txt`;
           let text: string | null = null;
           if (report.report_url) {
             text = await cloudService.fetchReportBlob(report.report_url);
