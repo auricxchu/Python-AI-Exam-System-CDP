@@ -11,6 +11,16 @@ export interface CloudResult {
   url?: string;
 }
 
+export interface ExamReportRow {
+  id: string;
+  created_at: string;
+  student_id: string;
+  student_name: string;
+  score: number;
+  report_url: string;
+  report_json: ExamReport;
+}
+
 const createTicketId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -189,7 +199,8 @@ export const cloudService = {
       const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
       // Sanitize report filename
       const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const filePath = `${studentId}/${Date.now()}_${sanitizedFilename}`;
+      const safeExamTitle = jsonReport.examTitle.replace(/[/\\?%*:|"<>]/g, '_').substring(0, 80);
+      const filePath = `${studentId}/${safeExamTitle}/${Date.now()}_${sanitizedFilename}`;
       
       const { data: uploadData, error: uploadError } = await supabase
         .storage
@@ -320,6 +331,51 @@ export const cloudService = {
       }
       console.error("Feedback submit error:", error);
       return { success: false, error: error?.message || "Unknown error" };
+    }
+  },
+
+  /**
+   * Fetch all exam reports from Supabase
+   */
+  fetchExamReports: async (): Promise<ExamReportRow[]> => {
+    if (!supabase) {
+      console.warn("Supabase not configured, cannot fetch reports.");
+      return [];
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('exam_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+      return (data || []) as ExamReportRow[];
+    } catch (e: any) {
+      if (isNetworkError(e)) {
+        console.warn("Fetch reports: Network offline");
+      } else {
+        console.error("Fetch reports error:", e);
+      }
+      return [];
+    }
+  },
+
+  /**
+   * Fetch the text content of a report from its public URL
+   */
+  fetchReportBlob: async (reportUrl: string): Promise<string | null> => {
+    try {
+      const response = await fetch(reportUrl);
+      if (!response.ok) {
+        console.warn(`Failed to fetch report from ${reportUrl}: ${response.status}`);
+        return null;
+      }
+      return await response.text();
+    } catch (e: any) {
+      console.error("Fetch report blob error:", e);
+      return null;
     }
   }
 };

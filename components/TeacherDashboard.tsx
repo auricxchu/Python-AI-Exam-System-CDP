@@ -6,6 +6,7 @@ import {
   FileText, Clock, Image as ImageIcon, Upload, X, ZoomIn, AlertCircle, ExternalLink, Sun, Moon, Wand2
 } from 'lucide-react';
 import { ExamConfig, Question, Difficulty, ExamAssemblyMode, SkillRubric } from '../types';
+import ReportManager from './ReportManager';
 import { AiProvider, AiProviderSettings, generateQuestion, testProviderConnectionWithSettings, inferRubricForQuestion } from '../services/aiService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, hashAdminPassword, verifyAdminPassword } from '../services/adminAuthService';
 import { Button, Input, Badge, ToolbarButton } from './ui';
@@ -56,6 +57,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // State
   const [localConfig, setLocalConfig] = useState<ExamConfig>(config);
   const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
+  const [mainTab, setMainTab] = useState<'questions' | 'reports'>('questions');
   const [filterDiff, setFilterDiff] = useState<Difficulty | 'all'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
@@ -991,10 +993,31 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Header */}
       <div className="w-full max-w-none flex justify-between items-center mb-6 shrink-0 pt-2">
          <div className="flex items-center gap-4">
-           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
-             云端题库管理
-           </h2>
-           {(isLoadingCloud || isSyncing) && (
+           <div className="flex items-center rounded-lg bg-slate-800/50 border border-slate-700/50 p-0.5">
+             <button
+               type="button"
+               onClick={() => setMainTab('questions')}
+               className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                 mainTab === 'questions'
+                   ? 'bg-blue-600 text-white shadow'
+                   : 'text-slate-400 hover:text-white'
+               }`}
+             >
+               题库管理
+             </button>
+             <button
+               type="button"
+               onClick={() => setMainTab('reports')}
+               className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                 mainTab === 'reports'
+                   ? 'bg-blue-600 text-white shadow'
+                   : 'text-slate-400 hover:text-white'
+               }`}
+             >
+               成绩管理
+             </button>
+           </div>
+           {mainTab === 'questions' && (isLoadingCloud || isSyncing) && (
               <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-900/20 px-3 py-1 rounded-full border border-blue-800">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 {syncStatusText || (isLoadingCloud ? "正在连接云数据库..." : "正在同步...")}
@@ -1033,7 +1056,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
          </div>
       </div>
 
-      <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
+      {mainTab === 'reports' ? (
+        <div className="w-full max-w-none flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+          <ReportManager theme={theme} />
+        </div>
+      ) : (
+        <div className="w-full max-w-none grid grid-cols-12 gap-6 flex-1 min-h-0">
         {/* Left Panel: Settings - Scrollable */}
         <div className="col-span-12 lg:col-span-5 flex min-h-0 flex-col gap-3 sm:gap-4 lg:gap-6 overflow-y-auto custom-scrollbar pr-2">
            {/* Basic Settings */}
@@ -1696,6 +1724,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
            </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

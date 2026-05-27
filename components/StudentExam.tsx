@@ -561,6 +561,9 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       const res = gradingResults[q.id];
       lines.push(`题目 ${idx + 1}: ${q.title} (${q.difficulty}) - [${q.points}分]`);
       lines.push(`----------------------------------------------------------------`);
+      lines.push(`[题目内容]`);
+      lines.push(q.description);
+      lines.push("");
       lines.push(`[学生代码]`);
       lines.push(answers[q.id] || "(未作答)");
       lines.push("");
