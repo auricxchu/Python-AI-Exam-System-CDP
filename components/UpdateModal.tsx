@@ -64,16 +64,24 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
                 )}
               </div>
             </div>
-            {notes ? (
-              <div>
-                <p className="text-xs text-slate-400 mb-2 font-medium">更新日志</p>
+            <div>
+              <p className="text-xs text-slate-400 mb-2 font-medium">更新内容</p>
+              {notes ? (
                 <div className="max-h-48 overflow-y-auto rounded-lg bg-slate-900/50 border border-slate-700 p-3">
                   <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{notes}</pre>
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">新版本 {version} 可用，建议更新到最新版本。</p>
-            )}
+              ) : (
+                <div className="rounded-lg bg-slate-900/50 border border-slate-700 p-3">
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    更新日志暂未提供，请前往{' '}
+                    <a href="https://github.com/auricxchu/Python-AI-Exam-System-CDP/releases" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
+                      GitHub Releases
+                    </a>
+                    {' '}查看版本 {version} 的更新内容。
+                  </p>
+                </div>
+              )}
+            </div>
             {forced && (
               <p className="text-xs text-amber-400 bg-amber-400/10 px-3 py-2 rounded-lg border border-amber-400/20">
                 此版本为重要更新，必须安装后才能继续使用。

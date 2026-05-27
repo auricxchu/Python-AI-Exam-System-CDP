@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.3 (2026-05-27)
+
+### 修复
+
+- **更新说明为空**：无 release notes 时显示 GitHub Releases 链接，引导用户查看更新内容
+- **立即重启失效**：修复 `quitAndInstall` 被 `setImmediate` 包裹导致的执行问题
+
 ## v1.2.2 (2026-05-27)
 
 ### 修复

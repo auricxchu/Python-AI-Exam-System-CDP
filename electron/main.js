@@ -311,7 +311,12 @@ app.whenReady().then(() => {
   });
 
   autoUpdater.on('update-available', (info) => {
-    sendToRenderer('update-available', { version: info.version, releaseDate: info.releaseDate });
+    sendToRenderer('update-available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseName: info.releaseName,
+      releaseNotes: info.releaseNotes
+    });
   });
 
   autoUpdater.on('update-not-available', (info) => {
@@ -350,9 +355,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('quit-and-install', () => {
-    setImmediate(() => {
-      autoUpdater.quitAndInstall();
-    });
+    autoUpdater.quitAndInstall(false, true);
   });
 
   ipcMain.on('skip-update', () => {
