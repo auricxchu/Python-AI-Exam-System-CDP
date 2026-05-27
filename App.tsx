@@ -188,13 +188,6 @@ export default function App() {
       setUpdateReleaseNotes(pending.releaseNotes || '');
       setUpdateReleaseDate(pending.releaseDate || '');
       setUpdateStatus('available');
-      if (pending.forced) {
-        const ipc = getIpc();
-        if (ipc) {
-          ipc.send('download-update');
-          setUpdateStatus('downloading');
-        }
-      }
     }
   }, [mode]);
 
@@ -232,10 +225,6 @@ export default function App() {
       setUpdateReleaseNotes(info.releaseNotes || '');
       setUpdateReleaseDate(info.releaseDate || '');
       setUpdateStatus('available');
-      if (forced) {
-        ipc.send('download-update');
-        setUpdateStatus('downloading');
-      }
     };
 
     const onNotAvailable = () => {
