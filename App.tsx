@@ -338,7 +338,28 @@ export default function App() {
 
   const handleRestartUpdate = () => {
     const ipc = getIpc();
-    if (ipc) ipc.send('quit-and-install');
+    console.log('[update] Restart update clicked; ipc available:', !!ipc);
+    if (!ipc) {
+      setUpdateStatus('error');
+      setUpdateError('当前环境不支持重启安装更新。');
+      return;
+    }
+
+    if (typeof ipc.invoke === 'function') {
+      ipc.invoke('quit-and-install')
+        .then((result: unknown) => {
+          console.log('[update] quit-and-install acknowledged by main process:', result);
+        })
+        .catch((error: unknown) => {
+          console.error('[update] quit-and-install IPC failed:', error);
+          setUpdateStatus('error');
+          setUpdateError('重启安装失败，请退出应用后重新打开。');
+        });
+      return;
+    }
+
+    ipc.send('quit-and-install');
+    console.log('[update] quit-and-install sent without invoke support.');
   };
 
   const handleDismissUpdate = () => {
@@ -939,7 +960,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         </div>
       )}
 
-      {(mode === 'landing' || mode === 'teacher_login' || mode === 'student_login') && openingDone && (
+      {(mode === 'landing' || mode === 'teacher_login' || mode === 'student_login') && openingDone && !['available', 'downloading', 'downloaded'].includes(updateStatus) && (
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
           <ToolbarButton
             theme={theme}

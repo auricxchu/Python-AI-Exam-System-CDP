@@ -12,7 +12,14 @@ let secureExamRefocusPending = false;
 // ── Auto-updater config ──
 autoUpdater.logger = console;
 autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowDowngrade = false;
+
+let downloadedUpdateInfo = null;
+let downloadedUpdateFiles = null;
+let downloadedUpdateReadyForInstall = false;
+let updateQuitInProgress = false;
+let updateQuitFallbackTimer = null;
 
 const ghToken = process.env.GH_TOKEN;
 if (ghToken) {
@@ -49,6 +56,85 @@ const sendToRenderer = (channel, data) => {
       win.webContents.send(channel, data);
     }
   });
+};
+
+const prepareWindowsForUpdateQuit = () => {
+  secureExamMode = false;
+  secureExamRefocusPending = false;
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (win.isDestroyed()) return;
+    try {
+      win.setClosable(true);
+    } catch (error) {
+      console.warn('[autoUpdater] Failed to mark window closable before update quit:', error);
+    }
+    try {
+      win.setAlwaysOnTop(false);
+      win.setVisibleOnAllWorkspaces(false);
+    } catch (error) {
+      console.warn('[autoUpdater] Failed to relax window policy before update quit:', error);
+    }
+  });
+};
+
+const clearUpdateQuitFallback = () => {
+  if (updateQuitFallbackTimer) {
+    clearTimeout(updateQuitFallbackTimer);
+    updateQuitFallbackTimer = null;
+  }
+};
+
+const scheduleUpdateQuitFallback = () => {
+  clearUpdateQuitFallback();
+  updateQuitFallbackTimer = setTimeout(() => {
+    console.warn('[autoUpdater] quitAndInstall did not quit yet; falling back to app.quit().');
+    app.quit();
+
+    setTimeout(() => {
+      if (!updateQuitInProgress) return;
+      console.warn('[autoUpdater] app.quit() did not complete; forcing process exit.');
+      app.exit(0);
+    }, 3000);
+  }, 8000);
+};
+
+const quitAndInstallUpdate = (source = 'ipc') => {
+  console.log('[autoUpdater] quit-and-install requested:', {
+    source,
+    appIsPackaged: app.isPackaged,
+    platform: process.platform,
+    updateDownloadedEventReceived: !!downloadedUpdateInfo,
+    updateReadyForInstall: downloadedUpdateReadyForInstall,
+    downloadedUpdateFiles,
+    windowCount: BrowserWindow.getAllWindows().length
+  });
+
+  if (updateQuitInProgress) {
+    console.log('[autoUpdater] quit-and-install already in progress.');
+    return { success: true, alreadyInProgress: true };
+  }
+
+  updateQuitInProgress = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  prepareWindowsForUpdateQuit();
+
+  try {
+    if (process.platform === 'darwin') {
+      autoUpdater.quitAndInstall();
+    } else {
+      autoUpdater.quitAndInstall(true, true);
+    }
+    console.log('[autoUpdater] quitAndInstall invoked.');
+    scheduleUpdateQuitFallback();
+    return { success: true };
+  } catch (error) {
+    updateQuitInProgress = false;
+    clearUpdateQuitFallback();
+    console.error('[autoUpdater] quitAndInstall threw:', error);
+    sendToRenderer('update-error', { message: getUpdateErrorMessage(error, '重启安装失败') });
+    return { success: false, error: error?.message || String(error) };
+  }
 };
 
 const notifyExamSecurityWarning = (reason) => {
@@ -304,6 +390,19 @@ ipcMain.on('app-exit', () => {
   app.quit();
 });
 
+app.on('before-quit', () => {
+  if (!updateQuitInProgress) return;
+  console.log('[autoUpdater] App before-quit received after quit-and-install request.');
+  clearUpdateQuitFallback();
+});
+
+app.on('will-quit', () => {
+  if (!updateQuitInProgress) return;
+  console.log('[autoUpdater] App will-quit received after quit-and-install request.');
+  updateQuitInProgress = false;
+  clearUpdateQuitFallback();
+});
+
 app.whenReady().then(() => {
   // ── Auto-updater event forwarding ──
   autoUpdater.on('checking-for-update', () => {
@@ -328,6 +427,13 @@ app.whenReady().then(() => {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    downloadedUpdateInfo = info;
+    downloadedUpdateReadyForInstall = false;
+    downloadedUpdateFiles = null;
+    console.log('[autoUpdater] update-downloaded event received:', {
+      version: info.version,
+      downloadedFile: info.downloadedFile
+    });
     sendToRenderer('update-downloaded', { version: info.version });
   });
 
@@ -349,13 +455,25 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('download-update', () => {
-    autoUpdater.downloadUpdate().catch((err) => {
+    console.log('[autoUpdater] download-update IPC received.');
+    downloadedUpdateReadyForInstall = false;
+    downloadedUpdateFiles = null;
+    autoUpdater.downloadUpdate().then((files) => {
+      downloadedUpdateReadyForInstall = true;
+      downloadedUpdateFiles = files;
+      console.log('[autoUpdater] downloadUpdate promise resolved; update is ready for install:', files);
+    }).catch((err) => {
       console.error('Update download failed:', err);
+      sendToRenderer('update-error', { message: getUpdateErrorMessage(err, '下载更新失败') });
     });
   });
 
-  ipcMain.on('quit-and-install', () => {
-    autoUpdater.quitAndInstall(false, true);
+  ipcMain.handle('quit-and-install', (event) => {
+    return quitAndInstallUpdate(event.sender.getURL());
+  });
+
+  ipcMain.on('quit-and-install', (event) => {
+    quitAndInstallUpdate(event.sender.getURL());
   });
 
   ipcMain.on('skip-update', () => {

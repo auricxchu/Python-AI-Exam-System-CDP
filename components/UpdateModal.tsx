@@ -18,10 +18,32 @@ interface UpdateModalProps {
   onDismiss: () => void;
 }
 
-function formatReleaseNotes(raw?: string): string {
-  if (!raw) return '';
-  // Strip leading/trailing whitespace, limit to reasonable length
-  return raw.trim().slice(0, 3000);
+function renderMarkdown(raw: string): string {
+  // Basic GitHub Flavored Markdown to HTML
+  let html = raw
+    // Escape HTML
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // Headings
+    .replace(/^### (.+)$/gm, '<p class="font-bold text-slate-200 mt-3 mb-1">$1</p>')
+    .replace(/^## (.+)$/gm, '<p class="font-bold text-white text-sm mt-3 mb-1">$1</p>')
+    .replace(/^# (.+)$/gm, '<p class="font-bold text-white text-sm mt-3 mb-1">$1</p>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="bg-slate-800 rounded px-1 text-blue-300">$1</code>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">$1</a>')
+    // Bullet points
+    .replace(/^- (.+)$/gm, '<li class="ml-3">• $1</li>')
+    // Double newlines
+    .replace(/\n\n+/g, '<br/><br/>')
+    // Single newlines
+    .replace(/\n/g, '<br/>');
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li[^>]*>.*?<\/li>(?:\s*<li[^>]*>.*?<\/li>)*)/g, '<ul class="my-1">$1</ul>');
+
+  return html.slice(0, 5000);
 }
 
 const UpdateModal: React.FC<UpdateModalProps> = ({
@@ -38,7 +60,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
 }) => {
   if (status === 'idle' || status === 'up-to-date') return null;
 
-  const notes = formatReleaseNotes(releaseNotes);
+  const notesHtml = releaseNotes ? renderMarkdown(releaseNotes) : '';
 
   const renderBody = () => {
     switch (status) {
@@ -66,10 +88,11 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
             <div>
               <p className="text-xs text-slate-400 mb-2 font-medium">更新内容</p>
-              {notes ? (
-                <div className="max-h-48 overflow-y-auto rounded-lg bg-slate-900/50 border border-slate-700 p-3">
-                  <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{notes}</pre>
-                </div>
+              {notesHtml ? (
+                <div
+                  className="max-h-48 overflow-y-auto rounded-lg bg-slate-900/50 border border-slate-700 p-3 text-xs text-slate-300 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: notesHtml }}
+                />
               ) : (
                 <div className="rounded-lg bg-slate-900/50 border border-slate-700 p-3">
                   <p className="text-xs text-slate-400 leading-relaxed">
@@ -156,12 +179,12 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
     }
   };
 
-  const canClose = !forced && (status === 'available' || status === 'error');
+  const canClose = !forced && (status === 'available' || status === 'downloaded' || status === 'error');
 
   return (
     <Modal
       isOpen
-      onClose={canClose ? onSkip : (() => {})}
+      onClose={canClose ? (status === 'downloaded' ? onDismiss : onSkip) : (() => {})}
       title={
         status === 'checking' ? '检查更新' :
         status === 'available' ? (forced ? '重要更新可用' : '发现新版本') :
