@@ -977,10 +977,10 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
                 <p className={`font-bold mb-1.5 ${textMutedClass}`}>扣分明细</p>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                   <span className={textMutedClass}>解析级语法错误</span><span className="text-right">-12</span>
-                  <span className={textMutedClass}>语法小错误</span><span className="text-right">-6</span>
-                  <span className={textMutedClass}>变量未定义/拼写</span><span className="text-right">-3</span>
-                  <span className={textMutedClass}>类型不匹配</span><span className="text-right">-5</span>
-                  <span className={textMutedClass}>命名可读性差</span><span className="text-right">-2</span>
+                  <span className={textMutedClass}>语法小错误</span><span className="text-right">-3</span>
+                  <span className={textMutedClass}>变量使用错误</span><span className="text-right">-5</span>
+                  <span className={textMutedClass}>类型使用错误</span><span className="text-right">-8</span>
+                  <span className={textMutedClass}>命名可读性不足</span><span className="text-right">-2</span>
                 </div>
               </div>
             </div>
