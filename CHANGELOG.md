@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.2 (2026-05-27)
+
+### 修复
+
+- **macOS 自动更新修复**：mac target 增加 zip 格式，修复 electron-updater 报"ZIP file not provided"的问题
+
 ## v1.2.1 (2026-05-27)
 
 ### 更新通知交互重构
