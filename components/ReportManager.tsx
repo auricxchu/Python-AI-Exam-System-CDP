@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText, Download, Eye, Loader2, AlertTriangle, CheckCircle,
   Users, Calendar, ChevronRight, ChevronDown, CheckSquare, Square,
-  ArrowUp, ArrowDown
+  ArrowUp, ArrowDown, Trash2
 } from 'lucide-react';
 import CodeDiffViewer from './CodeDiffViewer';
 import CachedImage from './CachedImage';
@@ -34,6 +34,8 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [sortField, setSortField] = useState<'name' | 'studentId' | 'score' | 'time'>('studentId');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[]; urls: string[]; label: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isLight = theme === 'light';
 
@@ -169,6 +171,39 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleDeleteSingle = (report: ExamReportRow) => {
+    setDeleteTarget({
+      ids: [report.id],
+      urls: report.report_url ? [report.report_url] : [],
+      label: `${report.student_name}（${report.student_id}）的成绩单`
+    });
+  };
+
+  const handleDeleteSelected = (group: ExamGroup) => {
+    const selected = group.reports.filter(r => selectedIds.has(r.id));
+    if (selected.length === 0) return;
+    setDeleteTarget({
+      ids: selected.map(r => r.id),
+      urls: selected.map(r => r.report_url).filter(Boolean) as string[],
+      label: `选中的 ${selected.length} 份成绩单`
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      for (let i = 0; i < deleteTarget.ids.length; i++) {
+        await cloudService.deleteExamReport(deleteTarget.ids[i], deleteTarget.urls[i]);
+      }
+      setSelectedIds(new Set());
+      await loadReports();
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   const formatScore = (score: number) => {
     if (isNaN(score)) return '0.0';
     return score.toFixed(1);
@@ -281,6 +316,35 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
         )}
       </Modal>
 
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => !isDeleting && setDeleteTarget(null)}
+        title="确认删除"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>取消</Button>
+            <Button variant="danger" onClick={confirmDelete} isLoading={isDeleting}>
+              确认删除
+            </Button>
+          </>
+        }
+      >
+        <div className="flex items-start gap-4">
+          <div className={`p-2 rounded-full shrink-0 ${isLight ? 'bg-red-50' : 'bg-red-500/10'}`}>
+            <Trash2 className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <p className={`text-sm font-medium ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+              确定要删除{deleteTarget?.label}吗？
+            </p>
+            <p className={`text-xs mt-2 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              此操作将同时删除云端存储的成绩单文件和数据库记录，不可恢复。
+            </p>
+          </div>
+        </div>
+      </Modal>
+
       {/* Exam Groups */}
       {groupedExams.map((group) => {
         const isExpanded = expandedExam === group.examTitle;
@@ -339,16 +403,28 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
                     {allSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : someSelected ? <Square className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
                     {allSelected ? '取消全选' : '全选'}
                   </button>
-                  <Button
-                    variant="secondary"
-                    disabled={selectedCount === 0 || isDownloading}
-                    isLoading={isDownloading}
-                    onClick={() => downloadSelected(group)}
-                    className={isLight ? 'bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none text-xs h-8 rounded-lg' : 'text-xs h-8 rounded-lg shadow-none'}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {selectedCount > 0 ? `下载选中 (${selectedCount})` : '批量下载'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      disabled={selectedCount === 0 || isDownloading}
+                      isLoading={isDownloading}
+                      onClick={() => downloadSelected(group)}
+                      className={isLight ? 'bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800 shadow-none text-xs h-8 rounded-lg' : 'text-xs h-8 rounded-lg shadow-none'}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {selectedCount > 0 ? `下载选中 (${selectedCount})` : '批量下载'}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={selectedCount === 0 || isDeleting}
+                      isLoading={isDeleting}
+                      onClick={() => handleDeleteSelected(group)}
+                      className="text-xs h-8 rounded-lg shadow-none"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {selectedCount > 0 ? `删除选中 (${selectedCount})` : '批量删除'}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Student Table */}
@@ -393,6 +469,13 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
                           title="下载成绩单"
                         >
                           <Download className="w-3.5 h-3.5" />
+                        </ToolbarButton>
+                        <ToolbarButton
+                          theme={theme}
+                          onClick={() => handleDeleteSingle(report)}
+                          title="删除成绩单"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
                         </ToolbarButton>
                       </div>
                     </div>

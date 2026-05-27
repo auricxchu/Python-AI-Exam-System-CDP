@@ -377,5 +377,47 @@ export const cloudService = {
       console.error("Fetch report blob error:", e);
       return null;
     }
+  },
+
+  /**
+   * Delete an exam report by ID, including the storage file
+   */
+  deleteExamReport: async (id: string, reportUrl?: string): Promise<CloudResult> => {
+    if (!supabase) {
+      return { success: false, error: "Supabase not configured" };
+    }
+
+    try {
+      // 1. Delete from DB
+      const { error: dbError } = await supabase
+        .from('exam_reports')
+        .delete()
+        .eq('id', id);
+
+      if (dbError) throw dbError;
+
+      // 2. Delete from storage if we have a URL
+      if (reportUrl) {
+        try {
+          const url = new URL(reportUrl);
+          const pathMatch = url.pathname.match(/\/exam-reports\/(.+)$/);
+          if (pathMatch) {
+            const storagePath = decodeURIComponent(pathMatch[1]);
+            await supabase.storage.from('exam-reports').remove([storagePath]);
+          }
+        } catch {
+          // Storage cleanup failure is non-fatal
+          console.warn("Failed to parse or delete storage file for report", id);
+        }
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      if (isNetworkError(e)) {
+        return { success: false, error: "网络未连接" };
+      }
+      console.error("Delete report error:", e);
+      return { success: false, error: e.message || "Unknown error" };
+    }
   }
 };
