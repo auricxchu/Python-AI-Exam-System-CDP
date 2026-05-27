@@ -8,6 +8,7 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   closeOnOutsideClick?: boolean;
+  hideClose?: boolean;
   panelClassName?: string;
   bodyClassName?: string;
 }
@@ -19,6 +20,7 @@ const Modal: React.FC<ModalProps> = ({
   children,
   footer,
   closeOnOutsideClick = true,
+  hideClose = false,
   panelClassName = "",
   bodyClassName = ""
 }) => {
@@ -35,9 +37,11 @@ const Modal: React.FC<ModalProps> = ({
       >
         <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-900/50">
           <h3 className="text-lg font-bold text-white">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          {!hideClose && (
+            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
         
         <div className={`p-6 text-slate-300 ${bodyClassName}`}>

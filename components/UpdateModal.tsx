@@ -166,22 +166,24 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
     }
   };
 
-  const canClose = !forced && (status === 'available' || status === 'downloaded' || status === 'error');
+  // Only closeable before committing: optional update not yet started, or error
+  const canClose = (status === 'available' && !forced) || status === 'error';
 
   return (
     <Modal
       isOpen
-      onClose={canClose ? (status === 'downloaded' ? onDismiss : onSkip) : (() => {})}
+      onClose={canClose ? onSkip : (() => {})}
       title={
         status === 'checking' ? '检查更新' :
-        status === 'available' ? (forced ? '重要更新可用' : '发现新版本') :
-        status === 'downloading' ? '正在下载更新' :
+        status === 'available' ? (forced ? '重要更新（必须安装）' : '发现新版本') :
+        status === 'downloading' ? '正在下载更新...' :
         status === 'downloaded' ? '更新就绪' :
         status === 'error' ? '更新检查失败' :
         '检查更新'
       }
       panelClassName="max-w-lg"
       closeOnOutsideClick={canClose}
+      hideClose={!canClose}
       footer={renderFooter()}
     >
       {renderBody()}

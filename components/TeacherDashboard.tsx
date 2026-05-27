@@ -983,7 +983,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Notification Toast */}
       {notif && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${notif.type === 'success' ? 'bg-green-600/90' : 'bg-orange-600/90'}`}>
-           <div className="bg-white/20 p-1 rounded-full">{notif.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}</div>
+           <div className="bg-white/20 p-1 rounded-full">{notif.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}</div>
            <span className="font-bold text-sm text-white">{notif.msg}</span>
         </div>
       )}

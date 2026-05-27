@@ -909,7 +909,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${
           theme === 'light' ? 'bg-green-500 text-white' : 'bg-green-600/90 text-white'
         }`}>
-          <CheckCircle className="w-5 h-5" />
+          <div className="bg-white/20 p-1 rounded-full"><CheckCircle className="w-4 h-4" /></div>
           <span className="font-bold text-sm">已是最新版本</span>
         </div>
       )}
