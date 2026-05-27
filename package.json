@@ -82,7 +82,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "JinNian2002",
+      "owner": "auricxchu",
       "repo": "Python-AI-Exam-System-CDP"
     }
   }
