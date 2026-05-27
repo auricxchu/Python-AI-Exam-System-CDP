@@ -1,3 +1,5 @@
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'up-to-date';
+
 export type Difficulty = "简单" | "中等" | "困难";
 export type ExamAssemblyMode = "random" | "manual";
 

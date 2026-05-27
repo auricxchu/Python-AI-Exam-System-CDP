@@ -998,7 +998,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
               <div className={`rounded-xl border p-3 text-xs ${isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/50 border-slate-700'}`}>
                 <p className={`font-bold mb-1 ${textMutedClass}`}>举例</p>
                 <p className={`leading-relaxed ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
-                  一道 25 分的题，能力全部完成（100分），有 1 个语法小错误扣 6 分 → 最终 94 分 → 实际得 94%×25=23.5 分。
+                  一道 25 分的题，能力全部完成（100分），有 1 个语法小错误扣 3 分 → 最终 97 分 → 实际得 97%×25=24.3 分。
                 </p>
               </div>
             </div>

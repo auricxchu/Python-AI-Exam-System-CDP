@@ -8,7 +8,7 @@ import { cloudService } from './services/cloudService';
 import { AiProvider, AiProviderSettings, clearRuntimeAiSettings, clearStoredAiSettings, getAiSettings, getAvailableProviders, setRuntimeAiSettings, testProviderConnection } from './services/aiService';
 import { fetchCloudAiSettings, saveCloudAiSettings } from './services/aiCloudService';
 import { DEFAULT_TEACHER_PASSWORD, hasCustomAdminPassword, verifyAdminPassword } from './services/adminAuthService';
-import { ExamConfig, Question, UserProfile } from './types';
+import { ExamConfig, Question, UserProfile, UpdateStatus } from './types';
 import { Button, Input, ToolbarButton } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
@@ -21,7 +21,6 @@ import { useNetworkStatus, isNetworkError } from './hooks/useNetworkStatus';
 import pkg from './package.json';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'up-to-date';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
 type TeacherLoginForm = HTMLFormElement & {
   password: HTMLInputElement;
@@ -175,6 +174,7 @@ export default function App() {
   const pendingUpdateRef = useRef<{ version: string; forced: boolean; releaseNotes?: string; releaseDate?: string } | null>(null);
   const initialUpdateCheckStartedRef = useRef(false);
   const updateCheckSourceRef = useRef<'auto' | 'manual' | null>(null);
+  const autoDismissTimerRef = useRef<number | null>(null);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -214,6 +214,10 @@ export default function App() {
         window.clearTimeout(checkTimeoutRef.current);
         checkTimeoutRef.current = null;
       }
+      if (autoDismissTimerRef.current) {
+        window.clearTimeout(autoDismissTimerRef.current);
+        autoDismissTimerRef.current = null;
+      }
     };
 
     const onAvailable = (_event: any, info: { version: string; releaseNotes?: string; releaseDate?: string; releaseName?: string }) => {
@@ -238,8 +242,8 @@ export default function App() {
       clearCheckTimeout();
       if (updateCheckSourceRef.current === 'manual') {
         setUpdateStatus('up-to-date');
-        // Auto-dismiss after 3 seconds
-        setTimeout(() => {
+        autoDismissTimerRef.current = window.setTimeout(() => {
+          autoDismissTimerRef.current = null;
           setUpdateStatus((prev) => (prev === 'up-to-date' ? 'idle' : prev));
         }, 3000);
       } else {
@@ -288,6 +292,14 @@ export default function App() {
       ipc.removeListener('download-progress', onProgress);
       ipc.removeListener('update-downloaded', onDownloaded);
       ipc.removeListener('update-error', onError);
+      if (checkTimeoutRef.current) {
+        window.clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = null;
+      }
+      if (autoDismissTimerRef.current) {
+        window.clearTimeout(autoDismissTimerRef.current);
+        autoDismissTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -315,6 +327,7 @@ export default function App() {
     setUpdateError('');
     ipc.send('check-for-update');
     if (checkTimeoutRef.current) window.clearTimeout(checkTimeoutRef.current);
+    if (autoDismissTimerRef.current) { window.clearTimeout(autoDismissTimerRef.current); autoDismissTimerRef.current = null; }
     checkTimeoutRef.current = window.setTimeout(() => {
       setUpdateStatus((prev) => (prev === 'checking' ? 'error' : prev));
       setUpdateError('检查超时，请稍后重试。');
@@ -676,31 +689,6 @@ const requestEnterMode = (nextMode: AppMode) => {
     return true;
   };
 
-  // Quick network connectivity probe — independent of cached local assets
-  const checkNetworkReachable = async (): Promise<boolean> => {
-    if (!navigator.onLine) return false;
-
-    const probeUrls = SUPABASE_URL
-      ? [SUPABASE_URL, REMOTE_RUNTIME_ASSET_URLS[0]]
-      : REMOTE_RUNTIME_ASSET_URLS;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    try {
-      const results = await Promise.all(
-        probeUrls.map((url) =>
-          fetch(url, { method: 'HEAD', mode: 'no-cors', signal: controller.signal }).then(() => true).catch(() => false)
-        )
-      );
-      return results.some(Boolean);
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timeout);
-    }
-  };
-
   const verifyLocalIntegrity = async () => {
     try {
       storageService.loadConfig();
@@ -715,8 +703,7 @@ const requestEnterMode = (nextMode: AppMode) => {
     await Promise.allSettled([
       checkRuntimeAssets(),
       checkProviders(),
-      verifyLocalIntegrity(),
-      checkNetworkReachable()
+      verifyLocalIntegrity()
     ]);
 
     // Trigger update check during opening (silent — only shows modal if update available)

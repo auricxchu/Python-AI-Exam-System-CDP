@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.3.0 (2026-05-27)
+
+### 代码简化与质量提升
+
+- **死代码清理**：移除未使用的 `StatusBanner`、`UpdateNotification` 组件和 `checkNetworkReachable` 函数，减少约 270 行无效代码
+- **共享类型提取**：`UpdateStatus` 类型从 3 处重复定义提取到 `types.ts` 统一管理
+- **定时器竞态修复**：更新检查自动关闭定时器增加完整清理路径（重新检查、IPC 事件、组件卸载），消除过期回调
+- **hooks 规则合规**：`useMemo` 移至 early return 之前，确保 React hooks 调用顺序稳定
+- **交叉审查**：Claude Code 与 Codex 双向代码审查，确认无回归和残余引用
+
+### 1.2.x 更新回顾
+
+自 v1.2.0 以来的主要改进：
+
+- **自动更新**：基于 electron-updater + GitHub Releases 的完整更新流程，支持强制/可选更新、下载进度、一键重启
+- **更新交互重构**：模态弹窗展示更新日志（HTML 渲染），按钮内检查状态，无更新 toast 自动消失，考试中暂存更新不打断
+- **macOS 兼容**：增加 zip 发布格式，修复无签名应用的 quitAndInstall 重启问题（3 秒兜底 relaunch）
+- **断网体验**：全屏遮罩替代内联 banner，实时响应 online/offline 事件
+- **评分修正**：扣分明细权重和标签与 AI 实际评分规则统一
+- **样式统一**：toast 去描边、CheckCircle 图标统一、深浅主题适配
+
 ## v1.2.9 (2026-05-27)
 
 ### 优化

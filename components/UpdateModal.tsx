@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import Modal from './Modal';
 import { Button } from './ui';
-
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'up-to-date';
+import { UpdateStatus } from '../types';
 
 interface UpdateModalProps {
   status: UpdateStatus;
@@ -33,6 +32,8 @@ function sanitizeReleaseHtml(raw: string): string {
     .slice(0, 10000);
 }
 
+const NOOP = () => {};
+
 const UpdateModal: React.FC<UpdateModalProps> = ({
   status,
   version,
@@ -45,9 +46,9 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
   onRestart,
   onDismiss
 }) => {
-  if (status === 'idle' || status === 'up-to-date') return null;
+  const notesHtml = useMemo(() => releaseNotes ? sanitizeReleaseHtml(releaseNotes) : '', [releaseNotes]);
 
-  const notesHtml = releaseNotes ? sanitizeReleaseHtml(releaseNotes) : '';
+  if (status === 'idle' || status === 'up-to-date') return null;
 
   const renderBody = () => {
     switch (status) {
@@ -166,21 +167,24 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
     }
   };
 
-  // Only closeable before committing: optional update not yet started, or error
   const canClose = (status === 'available' && !forced) || status === 'error';
+
+  const TITLES: Partial<Record<UpdateStatus, string>> = {
+    checking: '检查更新',
+    downloading: '正在下载更新...',
+    downloaded: '更新就绪',
+    error: '更新检查失败'
+  };
+
+  const title = status === 'available'
+    ? (forced ? '重要更新（必须安装）' : '发现新版本')
+    : (TITLES[status] || '检查更新');
 
   return (
     <Modal
       isOpen
-      onClose={canClose ? onSkip : (() => {})}
-      title={
-        status === 'checking' ? '检查更新' :
-        status === 'available' ? (forced ? '重要更新（必须安装）' : '发现新版本') :
-        status === 'downloading' ? '正在下载更新...' :
-        status === 'downloaded' ? '更新就绪' :
-        status === 'error' ? '更新检查失败' :
-        '检查更新'
-      }
+      onClose={canClose ? onSkip : NOOP}
+      title={title}
       panelClassName="max-w-lg"
       closeOnOutsideClick={canClose}
       hideClose={!canClose}
