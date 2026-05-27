@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText, Download, Eye, Loader2, AlertTriangle, CheckCircle,
-  Users, Calendar, ChevronRight, ChevronDown, CheckSquare, Square
+  Users, Calendar, ChevronRight, ChevronDown, CheckSquare, Square,
+  ArrowUp, ArrowDown
 } from 'lucide-react';
 import CodeDiffViewer from './CodeDiffViewer';
 import CachedImage from './CachedImage';
@@ -31,6 +32,8 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewReport, setPreviewReport] = useState<ExamReportRow | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [sortField, setSortField] = useState<'name' | 'studentId' | 'score' | 'time'>('time');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const isLight = theme === 'light';
 
@@ -182,6 +185,43 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
     }
   };
 
+  const sortReports = (list: ExamReportRow[]) => {
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'name':
+          cmp = (a.student_name || '').localeCompare(b.student_name || '', 'zh');
+          break;
+        case 'studentId':
+          cmp = (a.student_id || '').localeCompare(b.student_id || '', 'zh');
+          break;
+        case 'score':
+          cmp = (a.score || 0) - (b.score || 0);
+          break;
+        case 'time':
+          cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  };
+
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'score' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortIcon = (field: typeof sortField) => {
+    if (sortField !== field) return null;
+    return sortDir === 'asc'
+      ? <ArrowUp className="w-3 h-3" />
+      : <ArrowDown className="w-3 h-3" />;
+  };
+
   const formatFullDate = (dateStr: string) => {
     if (!dateStr) return '-';
     try {
@@ -315,13 +355,13 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
                 <div className={`rounded-lg border ${tableBorder} overflow-hidden`}>
                   <div className={`grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-3 px-4 py-2.5 text-xs font-bold ${tableHeaderBg} ${textMuted}`}>
                     <span className="w-6" />
-                    <span>姓名</span>
-                    <span>学号</span>
-                    <span>得分</span>
-                    <span>提交时间</span>
+                    <SortHeader field="name" label="姓名" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader field="studentId" label="学号" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader field="score" label="得分" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader field="time" label="提交时间" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                     <span>操作</span>
                   </div>
-                  {group.reports.map((report) => (
+                  {sortReports(group.reports).map((report) => (
                     <div
                       key={report.id}
                       className={`grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-3 px-4 py-3 text-sm items-center border-t ${tableBorder} ${tableRowHover} transition-colors`}
@@ -748,5 +788,29 @@ const InfoRow: React.FC<{ label: string; value?: string | null }> = ({ label, va
     <span className="text-slate-300 truncate">{value || '-'}</span>
   </div>
 );
+
+type SortField = 'name' | 'studentId' | 'score' | 'time';
+
+const SortHeader: React.FC<{
+  field: SortField; label: string;
+  sortField: SortField; sortDir: 'asc' | 'desc';
+  onSort: (f: SortField) => void;
+}> = ({ field, label, sortField, sortDir, onSort }) => {
+  const active = sortField === field;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className="flex items-center gap-1 hover:text-white transition-colors"
+    >
+      {label}
+      {active && (
+        sortDir === 'asc'
+          ? <ArrowUp className="w-3 h-3 text-blue-400" />
+          : <ArrowDown className="w-3 h-3 text-blue-400" />
+      )}
+    </button>
+  );
+};
 
 export default ReportManager;
