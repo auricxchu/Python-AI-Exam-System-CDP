@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { isNetworkError } from "../hooks/useNetworkStatus";
 import {
   DeductionCategory,
   DeductionCode,
@@ -93,7 +94,7 @@ const DEDUCTION_RULE_MAP = Object.fromEntries(
 
 const LIGHT_DEDUCTION_CAPS: Record<string, number> = {
   syntax: 15,
-  runtime: 8,
+  runtime: 13,
   style: 2
 };
 
@@ -109,21 +110,21 @@ export const LIGHT_DEDUCTION_RULES: { code: LightDeductionCode; label: string; c
     code: "SYN_MINOR",
     label: "语法小错误",
     category: "syntax",
-    weight: 6,
+    weight: 3,
     description: "偶发性手误，如中英文符号混用、单处拼写问题。"
   },
   {
     code: "RUN_VAR",
     label: "变量使用错误",
     category: "runtime",
-    weight: 3,
+    weight: 5,
     description: "变量名拼写错误、变量未定义就使用。"
   },
   {
     code: "RUN_TYPE",
     label: "类型使用错误",
     category: "runtime",
-    weight: 5,
+    weight: 8,
     description: "类型不匹配导致运行失败，如字符串与整数直接相加。"
   },
   {
@@ -516,7 +517,11 @@ ${instruction}
       template: (raw.template || current.template || "def solution():\n    pass").trim()
     };
   } catch (error) {
-    console.error("AI Generate Error:", error);
+    if (isNetworkError(error)) {
+      console.error("AI Generate Error: Network offline", error);
+    } else {
+      console.error("AI Generate Error:", error);
+    }
     return null;
   }
 };
@@ -635,7 +640,11 @@ export const generateReferenceAnswer = async (
 
     return raw.reference_answer?.trim() || null;
   } catch (error) {
-    console.error("Reference Answer Error:", error);
+    if (isNetworkError(error)) {
+      console.error("Reference Answer Error: Network offline", error);
+    } else {
+      console.error("Reference Answer Error:", error);
+    }
     return null;
   }
 };
@@ -787,6 +796,8 @@ const skillGradingPrompt = (rubric: SkillRubric[]) => {
    - STY_NAME: 变量名过于随意，几乎无法体现含义
 5. 同类错误重复出现只需给一次最具代表性的证据。
 6. 评语必须先肯定，再指出问题，最后给出下一步建议。
+7. 【关键】corrected_answer 必须是修正了所有代码问题的完整代码。如果所有能力点完成度都是 1.0 且无轻量错误，corrected_answer 可与学生原代码相同；否则 corrected_answer 必须与原代码不同，切实修复了完成度不足的能力点所对应的代码问题。
+8. 【关键】feedback.main_issues 必须与扣分项严格对应：若存在完成度 < 1.0 的能力点，必须具体说明哪个能力点不足、不足在哪里；若存在轻量错误，必须指出具体错误。禁止在完成度 < 1.0 时说"完全正确"或"无问题"。
 
 评分标准（Rubric）：
 ${rubricLines}
@@ -985,6 +996,80 @@ const createSkillResultFromSummary = (
         : "未命中轻量扣分项。",
     suggestion: summary.nextSteps
   };
+};
+
+// ─── Post-processing: detect AI inconsistency ───
+
+/**
+ * Normalize code for comparison: collapse whitespace and trim.
+ */
+const normalizeCodeForComparison = (code: string): string => {
+  return code.replace(/\s+/g, " ").trim();
+};
+
+/**
+ * Check if AI's corrected_answer is inconsistent with its deductions.
+ * If any skill has completion < 1.0 or there are light deductions,
+ * but corrected_answer is identical to the student's code, clear it.
+ * Also supplement feedback.mainIssues if it says "no issues" despite deductions.
+ */
+const sanitizeGradingResponse = (
+  studentCode: string,
+  correctedAnswer: string | undefined,
+  skillCompletions: SkillCompletion[],
+  lightDeductions: LightDeductionHit[],
+  mainIssues: string
+): { correctedAnswer: string | undefined; mainIssues: string } => {
+  let result = { correctedAnswer, mainIssues };
+
+  const hasDeductions =
+    skillCompletions.some((c) => c.completion < 1.0) ||
+    lightDeductions.length > 0;
+
+  if (!hasDeductions) return result;
+
+  // Check if corrected_answer is essentially the same as student code
+  if (correctedAnswer && correctedAnswer.trim()) {
+    const normalizedStudent = normalizeCodeForComparison(studentCode);
+    const normalizedCorrected = normalizeCodeForComparison(correctedAnswer);
+    if (normalizedStudent === normalizedCorrected) {
+      console.warn(
+        "[Grading] AI returned corrected_answer identical to student code despite deductions. Clearing corrected_answer."
+      );
+      result.correctedAnswer = undefined;
+    }
+  }
+
+  // Check if feedback contradicts deductions
+  const noIssuePatterns = [
+    /完全正确/,
+    /无主要问题/,
+    /无问题/,
+    /没有[^\s]*问题/,
+    /逻辑.*正确[。，.]/,
+    /代码.*完美/,
+  ];
+  const hasContradictoryFeedback = noIssuePatterns.some((p) => p.test(mainIssues));
+
+  if (hasContradictoryFeedback) {
+    const lowSkills = skillCompletions
+      .filter((c) => c.completion < 1.0)
+      .map((c) => `${c.skillId}(完成度${Math.round(c.completion * 100)}%)`)
+      .join("、");
+    const dedCodes = lightDeductions.map((d) => d.label).join("、");
+
+    const parts: string[] = [];
+    if (lowSkills) parts.push(`以下能力点未完全达标：${lowSkills}`);
+    if (dedCodes) parts.push(`代码存在以下问题：${dedCodes}`);
+    parts.push("请根据以上反馈修改代码后重新提交。");
+
+    console.warn(
+      "[Grading] AI feedback says no issues but deductions exist. Supplementing mainIssues."
+    );
+    result.mainIssues = parts.join("。");
+  }
+
+  return result;
 };
 
 // ─── Blank / Error results ───
@@ -1269,19 +1354,29 @@ export const gradeQuestionWithRubric = async (
   if (cloudRaw) {
     const skillCompletions = normalizeSkillCompletions(cloudRaw.skill_completions, rubric);
     const lightDeductions = normalizeLightDeductions(cloudRaw.light_deductions);
+    const rawMainIssues = cloudRaw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。";
+    const sanitized = sanitizeGradingResponse(
+      code, cloudRaw.corrected_answer, skillCompletions, lightDeductions, rawMainIssues
+    );
     return createSkillResultFromSummary(
       rubric,
       skillCompletions,
       lightDeductions,
       {
         highlights: cloudRaw.feedback?.highlights?.trim() || "你已经做出了有效尝试，值得肯定。",
-        mainIssues: cloudRaw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。",
+        mainIssues: sanitized.mainIssues,
         nextSteps: cloudRaw.feedback?.suggestions?.trim() || "建议先修正明显错误，再重新运行检查结果。"
       },
-      { correctedAnswer: cloudRaw.corrected_answer }
+      { correctedAnswer: sanitized.correctedAnswer }
     );
   }
   if (isCloudAiProxyEnabled()) {
+    if (!navigator.onLine) {
+      return createErrorGradingResult(
+        "网络连接已断开，无法提交评分。",
+        "请检查网络连接后重新提交。"
+      );
+    }
     return createErrorGradingResult(
       "云端 AI 服务不可用。",
       "请联系老师检查云端模型配置或稍后重试。"
@@ -1323,18 +1418,29 @@ export const gradeQuestionWithRubric = async (
 
     const skillCompletions = normalizeSkillCompletions(raw.skill_completions, rubric);
     const lightDeductions = normalizeLightDeductions(raw.light_deductions);
+    const rawMainIssues = raw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。";
+    const sanitized = sanitizeGradingResponse(
+      code, raw.corrected_answer, skillCompletions, lightDeductions, rawMainIssues
+    );
     return createSkillResultFromSummary(
       rubric,
       skillCompletions,
       lightDeductions,
       {
         highlights: raw.feedback?.highlights?.trim() || "你已经做出了有效尝试，值得肯定。",
-        mainIssues: raw.feedback?.main_issues?.trim() || "当前代码还有一些可以继续改进的地方。",
+        mainIssues: sanitized.mainIssues,
         nextSteps: raw.feedback?.suggestions?.trim() || "建议先修正明显错误，再重新运行检查结果。"
       },
-      { correctedAnswer: raw.corrected_answer }
+      { correctedAnswer: sanitized.correctedAnswer }
     );
   } catch (error: any) {
+    if (isNetworkError(error)) {
+      console.error("Grading Error: Network offline");
+      return createErrorGradingResult(
+        "网络连接失败，无法提交评分。",
+        "请检查网络连接后重新提交。"
+      );
+    }
     console.error("Grading Error:", error);
     return createErrorGradingResult(
       `评分服务连接失败：${error.message || "未知错误"}`,

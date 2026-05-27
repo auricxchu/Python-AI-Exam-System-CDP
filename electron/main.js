@@ -4,9 +4,52 @@ const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const crypto = require('crypto');
+const { autoUpdater } = require('electron-updater');
 const imageCacheDir = path.join(app.getPath('userData'), 'image-cache');
 let secureExamMode = false;
 let secureExamRefocusPending = false;
+
+// ── Auto-updater config ──
+autoUpdater.logger = console;
+autoUpdater.autoDownload = false;
+autoUpdater.allowDowngrade = false;
+
+const ghToken = process.env.GH_TOKEN;
+if (ghToken) {
+  autoUpdater.requestHeaders = {
+    ...(autoUpdater.requestHeaders || {}),
+    Authorization: `token ${ghToken}`
+  };
+}
+
+const PRIVATE_REPO_UPDATE_MESSAGE = '更新服务暂未配置（仓库可能为私有），请联系管理员。';
+
+const isPrivateRepoUpdateError = (error) => {
+  const statusCode = error?.statusCode || error?.status || error?.response?.statusCode || error?.response?.status;
+  const message = String(error?.message || error || '');
+
+  return statusCode === 404
+    || /(^|[^0-9])404([^0-9]|$)/.test(message)
+    || (/releases\.atom/i.test(message) && /(not found|private)/i.test(message));
+};
+
+const getUpdateErrorMessage = (error, fallback = '检查更新失败') => {
+  console.error('[autoUpdater] error:', error);
+  if (!error) return fallback;
+  if (isPrivateRepoUpdateError(error)) {
+    return PRIVATE_REPO_UPDATE_MESSAGE;
+  }
+  const msg = error?.message || error?.toString?.() || '';
+  return msg || fallback;
+};
+
+const sendToRenderer = (channel, data) => {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  });
+};
 
 const notifyExamSecurityWarning = (reason) => {
   BrowserWindow.getAllWindows().forEach((window) => {
@@ -262,6 +305,64 @@ ipcMain.on('app-exit', () => {
 });
 
 app.whenReady().then(() => {
+  // ── Auto-updater event forwarding ──
+  autoUpdater.on('checking-for-update', () => {
+    sendToRenderer('checking-for-update');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    sendToRenderer('update-available', { version: info.version, releaseDate: info.releaseDate });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    sendToRenderer('update-not-available', { version: info.version });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendToRenderer('download-progress', { percent: Math.floor(progress.percent) });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendToRenderer('update-downloaded', { version: info.version });
+  });
+
+  autoUpdater.on('error', (error) => {
+    sendToRenderer('update-error', { message: getUpdateErrorMessage(error, '未知错误') });
+  });
+
+  // ── Update IPC handlers ──
+  ipcMain.on('check-for-update', () => {
+    if (!app.isPackaged) {
+      // Dev mode: electron-updater skips without emitting events
+      sendToRenderer('update-not-available', { version: app.getVersion() });
+      return;
+    }
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('Update check failed:', err);
+      sendToRenderer('update-error', { message: getUpdateErrorMessage(err) });
+    });
+  });
+
+  ipcMain.on('download-update', () => {
+    autoUpdater.downloadUpdate().catch((err) => {
+      console.error('Update download failed:', err);
+    });
+  });
+
+  ipcMain.on('quit-and-install', () => {
+    setImmediate(() => {
+      autoUpdater.quitAndInstall();
+    });
+  });
+
+  ipcMain.on('skip-update', () => {
+    console.log('User skipped update');
+  });
+
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
   protocol.registerBufferProtocol('appimg', async (request, respond) => {
     try {
       const fileName = decodeURIComponent(request.url.replace('appimg://', ''));

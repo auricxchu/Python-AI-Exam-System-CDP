@@ -3,6 +3,7 @@ import { Question, ExamReport, ExamConfig, ExamFeedbackPayload } from "../types"
 import { DEFAULT_CONFIG, DEFAULT_QUESTIONS } from "../constants";
 import { supabase } from "./supabaseClient";
 import { normalizeExamConfig } from "./examConfigService";
+import { isNetworkError } from "../hooks/useNetworkStatus";
 
 export interface CloudResult {
   success: boolean;
@@ -54,7 +55,11 @@ export const cloudService = {
 
       return normalizeExamConfig(data.data as ExamConfig);
     } catch (e) {
-      console.error("Cloud fetch error:", e);
+      if (isNetworkError(e)) {
+        console.warn("Cloud fetch: Network offline, using local config");
+      } else {
+        console.error("Cloud fetch error:", e);
+      }
       return null;
     }
   },
@@ -96,6 +101,10 @@ export const cloudService = {
 
       return { success: true };
     } catch (e: any) {
+      if (isNetworkError(e)) {
+        console.warn("Cloud save: Network offline");
+        return { success: false, error: "网络未连接，数据已保存到本地" };
+      }
       console.error("Cloud save error:", e);
       return { success: false, error: e.message || "Unknown error" };
     }
@@ -148,6 +157,10 @@ export const cloudService = {
       return { success: true, url: publicUrl };
 
     } catch (e: any) {
+      if (isNetworkError(e)) {
+        console.warn("Image upload: Network offline");
+        return { success: false, error: "网络连接已断开，无法上传图片" };
+      }
       console.error("Image upload error:", e);
       return { success: false, error: e.message || "上传失败 (请检查服务器 RLS 策略)" };
     }
@@ -211,6 +224,10 @@ export const cloudService = {
       return { success: true, url: publicUrl };
 
     } catch (e: any) {
+      if (isNetworkError(e)) {
+        console.warn("Cloud upload: Network offline");
+        return { success: false, error: "网络连接已断开，成绩已保存到本地" };
+      }
       console.error("Cloud upload error:", e);
       return { success: false, error: e.message || "Unknown error" };
     }
@@ -297,6 +314,10 @@ export const cloudService = {
 
       return { success: true, url: filePath };
     } catch (error: any) {
+      if (isNetworkError(error)) {
+        console.warn("Feedback submit: Network offline");
+        return { success: false, error: "网络连接已断开，反馈已保存到本地" };
+      }
       console.error("Feedback submit error:", error);
       return { success: false, error: error?.message || "Unknown error" };
     }

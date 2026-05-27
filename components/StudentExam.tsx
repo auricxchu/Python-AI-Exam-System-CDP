@@ -40,6 +40,7 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStep, setSubmissionStep] = useState<"idle" | "grading" | "generating" | "uploading" | "done">("idle");
   const [pyodideReady, setPyodideReady] = useState(false);
+  const [pyodideLoadError, setPyodideLoadError] = useState(false);
   
   // Results
   const [examFinished, setExamFinished] = useState(false);
@@ -183,8 +184,10 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
       try {
         await initPyodide();
         setPyodideReady(true);
+        setPyodideLoadError(false);
       } catch (e) {
         console.error("Pyodide failed to load", e);
+        setPyodideLoadError(true);
       }
     };
     loadEngine();
@@ -312,11 +315,11 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic offline check: lock exam after 60s without network
+    // Periodic offline check: lock exam after 30s without network
     const offlineCheckInterval = window.setInterval(() => {
       if (!navigator.onLine && offlineSinceRef.current && !examFinished) {
         const elapsed = Date.now() - offlineSinceRef.current;
-        if (elapsed > 60000) {
+        if (elapsed > 30000) {
           setOfflineLocked(true);
         }
       }
@@ -1790,8 +1793,14 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
             {/* Editor & Terminal */}
             <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]" ref={editorSplitRef}>
+               {pyodideLoadError && !pyodideReady && (
+                 <div className="bg-red-900/30 border-b border-red-500/30 px-4 py-2 text-red-300 text-xs flex items-center gap-2">
+                   <AlertCircle className="w-4 h-4 shrink-0" />
+                   <span>Python 运行环境加载失败，请检查网络连接。代码运行功能暂不可用。</span>
+                 </div>
+               )}
                <div className="flex-1 min-h-0">
-                  <CodeEditor 
+                  <CodeEditor
                     code={answers[currentQ.id]} 
                     onChange={(val) => setAnswers(prev => ({ ...prev, [currentQ.id]: val }))} 
                     onRun={handleRun}
@@ -1825,11 +1834,17 @@ const StudentExam: React.FC<StudentExamProps> = ({ user, config, questions, onEx
 
       {/* Offline Lock Overlay */}
       {offlineLocked && !examFinished && (
-        <div className="absolute inset-0 z-[100] bg-slate-950/95 flex flex-col items-center justify-center gap-6 backdrop-blur-sm">
-          <WifiOff className="w-16 h-16 text-red-400" />
-          <h2 className="text-2xl font-bold text-white">网络连接已断开</h2>
-          <p className="text-slate-400 text-sm max-w-md text-center leading-relaxed">
-            系统检测到网络连接已中断超过 60 秒。<br />
+        <div className={`absolute inset-0 z-[100] flex flex-col items-center justify-center gap-6 backdrop-blur-sm ${
+          theme === 'light'
+            ? 'bg-white/95 text-slate-800'
+            : 'bg-slate-950/95 text-white'
+        }`}>
+          <WifiOff className={`w-16 h-16 ${theme === 'light' ? 'text-red-600' : 'text-red-400'}`} />
+          <h2 className="text-2xl font-bold">网络连接已断开</h2>
+          <p className={`text-sm max-w-md text-center leading-relaxed ${
+            theme === 'light' ? 'text-slate-600' : 'text-slate-400'
+          }`}>
+            系统检测到网络连接已中断超过 30 秒。<br />
             为防止题目泄露，考试已暂停。<br />
             请等待监考老师协助恢复网络后继续答题。
           </p>

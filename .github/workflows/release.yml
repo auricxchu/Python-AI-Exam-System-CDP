@@ -30,24 +30,12 @@ jobs:
 
       - name: Package Electron (macOS)
         if: runner.os == 'macOS'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package Electron (Windows)
         if: runner.os == 'Windows'
-        run: npx electron-builder --win --publish never
-
-      - name: Upload macOS DMG
-        if: runner.os == 'macOS'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*.dmg
+        run: npx electron-builder --win --publish always
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows installer
-        if: runner.os == 'Windows'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30,6 +30,7 @@ interface TeacherDashboardProps {
   isCheckingProviders: boolean;
   onSaveApiSettings: (settings: AiProviderSettings) => Promise<{ success: boolean; error?: string }>;
   onCheckProviders: () => void;
+  onCheckUpdate: () => void;
 }
 
 const providerDocs: Record<AiProvider, string> = {
@@ -51,7 +52,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   providerStatus,
   isCheckingProviders,
   onSaveApiSettings,
-  onCheckProviders
+  onCheckProviders,
+  onCheckUpdate
 }) => {
   // State
   const [localConfig, setLocalConfig] = useState<ExamConfig>(config);
@@ -1002,6 +1004,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
            )}
          </div>
          <div className="flex items-center gap-2 text-slate-400">
+           <ToolbarButton
+             theme={theme}
+             onClick={onCheckUpdate}
+             title="检查更新"
+           >
+             <RefreshCw className="w-4 h-4" />
+             <span className="text-xs font-medium">检查更新</span>
+           </ToolbarButton>
            <ToolbarButton
              theme={theme}
              onClick={onToggleTheme}

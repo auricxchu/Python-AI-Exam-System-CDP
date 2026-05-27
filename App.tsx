@@ -1,6 +1,6 @@
 ﻿
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon, Eye, EyeOff } from 'lucide-react';
+import { Code, GraduationCap, ChevronRight, ChevronLeft, Monitor, Key, Power, AlertCircle, Sun, Moon, Eye, EyeOff, WifiOff, RefreshCw } from 'lucide-react';
 import TeacherDashboard from './components/TeacherDashboard';
 import StudentExam from './components/StudentExam';
 import { storageService } from './services/storageService';
@@ -12,12 +12,15 @@ import { ExamConfig, Question, UserProfile } from './types';
 import { Button, Input, ToolbarButton } from './components/ui';
 import Modal from './components/Modal';
 import OpeningScreen, { OPENING_TIMING } from './components/OpeningScreen';
+import UpdateNotification from './components/UpdateNotification';
 import { teacherSessionService } from './services/teacherSessionService';
 import { buildExamQuestions, normalizeExamConfig } from './services/examConfigService';
 import { SUPABASE_URL } from './services/supabaseClient';
+import { useNetworkStatus, isNetworkError } from './hooks/useNetworkStatus';
 import pkg from './package.json';
 
 type AppMode = 'landing' | 'teacher_login' | 'teacher_dash' | 'student_login' | 'student_exam';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
 const OPENING_SEEN_KEY = 'app_opening_seen_v2';
 type TeacherLoginForm = HTMLFormElement & {
   password: HTMLInputElement;
@@ -40,6 +43,15 @@ const REMOTE_RUNTIME_ASSET_URLS = [
 ];
 
 const APP_VERSION = `v${pkg.version}`;
+
+function isForcedUpdate(current: string, latest: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+  const [curMajor, curMinor] = parse(current);
+  const [latMajor, latMinor] = parse(latest);
+  if (latMajor > curMajor) return true;
+  if (latMajor === curMajor && latMinor > curMinor) return true;
+  return false;
+}
 
 function getDeviceInfo(): string {
   const parts: string[] = [APP_VERSION];
@@ -150,17 +162,196 @@ export default function App() {
   const [isCheckingTeacherLogin, setIsCheckingTeacherLogin] = useState(false);
 
 
+  // Update State
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle');
+  const [updateVersion, setUpdateVersion] = useState('');
+  const [updateForced, setUpdateForced] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateError, setUpdateError] = useState('');
+  const modeRef = useRef<AppMode>(mode);
+  const pendingUpdateRef = useRef<{ version: string; forced: boolean } | null>(null);
+  const initialUpdateCheckStartedRef = useRef(false);
+  const updateCheckSourceRef = useRef<'auto' | 'manual' | null>(null);
+
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  // Check pending update when leaving exam mode
+  useEffect(() => {
+    if (mode !== 'student_exam' && pendingUpdateRef.current) {
+      const pending = pendingUpdateRef.current;
+      pendingUpdateRef.current = null;
+      setUpdateVersion(pending.version);
+      setUpdateForced(pending.forced);
+      setUpdateStatus('available');
+      if (pending.forced) {
+        const ipc = getIpc();
+        if (ipc) {
+          ipc.send('download-update');
+          setUpdateStatus('downloading');
+        }
+      }
+    }
+  }, [mode]);
+
+  // IPC update event listeners
+  useEffect(() => {
+    const ipc = getIpc();
+    if (!ipc) return;
+
+    const onChecking = () => setUpdateStatus('checking');
+
+    const clearCheckTimeout = () => {
+      if (checkTimeoutRef.current) {
+        window.clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = null;
+      }
+    };
+
+    const onAvailable = (_event: any, info: { version: string }) => {
+      clearCheckTimeout();
+      const forced = isForcedUpdate(APP_VERSION, info.version);
+      if (modeRef.current === 'student_exam') {
+        pendingUpdateRef.current = { version: info.version, forced };
+        return;
+      }
+      setUpdateVersion(info.version);
+      setUpdateForced(forced);
+      setUpdateStatus('available');
+      if (forced) {
+        ipc.send('download-update');
+        setUpdateStatus('downloading');
+      }
+    };
+
+    const onNotAvailable = () => {
+      clearCheckTimeout();
+      setUpdateStatus((prev) => (prev === 'checking' ? 'idle' : prev));
+      updateCheckSourceRef.current = null;
+    };
+
+    const onProgress = (_event: any, info: { percent: number }) => {
+      setUpdateProgress(info.percent);
+      setUpdateStatus('downloading');
+    };
+
+    const onDownloaded = (_event: any, info: { version: string }) => {
+      clearCheckTimeout();
+      setUpdateVersion(info.version);
+      setUpdateProgress(100);
+      setUpdateStatus('downloaded');
+      updateCheckSourceRef.current = null;
+    };
+
+    const onError = (_event: any, info: { message: string }) => {
+      clearCheckTimeout();
+      if (updateCheckSourceRef.current !== 'manual') {
+        setUpdateError('');
+        setUpdateStatus((prev) => (prev === 'checking' || prev === 'downloading' ? 'idle' : prev));
+        updateCheckSourceRef.current = null;
+        return;
+      }
+      setUpdateError(info.message);
+      setUpdateStatus('error');
+      updateCheckSourceRef.current = null;
+    };
+
+    ipc.on('checking-for-update', onChecking);
+    ipc.on('update-available', onAvailable);
+    ipc.on('update-not-available', onNotAvailable);
+    ipc.on('download-progress', onProgress);
+    ipc.on('update-downloaded', onDownloaded);
+    ipc.on('update-error', onError);
+
+    return () => {
+      ipc.removeListener('checking-for-update', onChecking);
+      ipc.removeListener('update-available', onAvailable);
+      ipc.removeListener('update-not-available', onNotAvailable);
+      ipc.removeListener('download-progress', onProgress);
+      ipc.removeListener('update-downloaded', onDownloaded);
+      ipc.removeListener('update-error', onError);
+    };
+  }, []);
+
+  // Helper: get ipcRenderer in Electron (check for our aliased require)
+  const getIpc = (): any => {
+    const electronRequire = (window as any).electronRequire || (window as any).require;
+    if (!electronRequire) return null;
+    const { ipcRenderer } = electronRequire('electron');
+    return ipcRenderer || null;
+  };
+
+  // Update action handlers
+  const checkTimeoutRef = useRef<number | null>(null);
+
+  const handleCheckUpdate = () => {
+    const ipc = getIpc();
+    if (!ipc) {
+      updateCheckSourceRef.current = 'manual';
+      setUpdateStatus('error');
+      setUpdateError('当前环境不支持更新检查。');
+      return;
+    }
+    updateCheckSourceRef.current = 'manual';
+    setUpdateStatus('checking');
+    setUpdateError('');
+    ipc.send('check-for-update');
+    if (checkTimeoutRef.current) window.clearTimeout(checkTimeoutRef.current);
+    checkTimeoutRef.current = window.setTimeout(() => {
+      setUpdateStatus((prev) => (prev === 'checking' ? 'error' : prev));
+      setUpdateError('检查超时，请稍后重试。');
+    }, 10000);
+  };
+
+  const handleDownloadUpdate = () => {
+    const ipc = getIpc();
+    if (!ipc) return;
+    updateCheckSourceRef.current = 'manual';
+    setUpdateStatus('downloading');
+    ipc.send('download-update');
+  };
+
+  const handleSkipUpdate = () => {
+    const ipc = getIpc();
+    if (ipc) ipc.send('skip-update');
+    updateCheckSourceRef.current = null;
+    setUpdateStatus('idle');
+  };
+
+  const handleRestartUpdate = () => {
+    const ipc = getIpc();
+    if (ipc) ipc.send('quit-and-install');
+  };
+
+  const handleDismissUpdate = () => {
+    updateCheckSourceRef.current = null;
+    setUpdateStatus('idle');
+  };
+
   // Student State
   const [studentUser, setStudentUser] = useState<UserProfile | null>(null);
   const [examQuestions, setExamQuestions] = useState<Question[]>([]);
 
+  // Global network status
+  const { isOnline } = useNetworkStatus();
+  const [networkReachable, setNetworkReachable] = useState<boolean | null>(null); // null = not yet checked
+  const [configSyncStatus, setConfigSyncStatus] = useState<'idle' | 'loading' | 'synced' | 'offline' | 'error'>('idle');
+
   // Sync config from cloud on load
   useEffect(() => {
     const syncConfig = async () => {
+        setConfigSyncStatus('loading');
+        if (!navigator.onLine) {
+          console.warn("App: Device is offline, skipping cloud config sync");
+          setConfigSyncStatus('offline');
+          return;
+        }
         const cloudConfig = await cloudService.fetchExamConfig();
         if (cloudConfig) {
             console.log("App: Synced exam config from cloud");
             setConfig(normalizeExamConfig(cloudConfig));
+            setConfigSyncStatus('synced');
+        } else {
+            setConfigSyncStatus('error');
         }
     };
     syncConfig();
@@ -202,6 +393,18 @@ export default function App() {
       setLandingAnimKey((prev) => prev + 1);
     }
   }, [openingDone, mode]);
+
+  useEffect(() => {
+    if (!openingDone || initialUpdateCheckStartedRef.current) return;
+    initialUpdateCheckStartedRef.current = true;
+
+    const ipc = getIpc();
+    if (!ipc) return;
+
+    updateCheckSourceRef.current = 'auto';
+    setUpdateError('');
+    ipc.send('check-for-update');
+  }, [openingDone]);
 
   useEffect(() => {
     aiProviderRef.current = aiProvider;
@@ -446,6 +649,31 @@ const requestEnterMode = (nextMode: AppMode) => {
     return true;
   };
 
+  // Quick network connectivity probe — independent of cached local assets
+  const checkNetworkReachable = async (): Promise<boolean> => {
+    if (!navigator.onLine) return false;
+
+    const probeUrls = SUPABASE_URL
+      ? [SUPABASE_URL, REMOTE_RUNTIME_ASSET_URLS[0]]
+      : REMOTE_RUNTIME_ASSET_URLS;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const results = await Promise.all(
+        probeUrls.map((url) =>
+          fetch(url, { method: 'HEAD', mode: 'no-cors', signal: controller.signal }).then(() => true).catch(() => false)
+        )
+      );
+      return results.some(Boolean);
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
   const verifyLocalIntegrity = async () => {
     try {
       storageService.loadConfig();
@@ -457,11 +685,19 @@ const requestEnterMode = (nextMode: AppMode) => {
   };
 
   const runOpeningInit = async () => {
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       checkRuntimeAssets(),
       checkProviders(),
-      verifyLocalIntegrity()
+      verifyLocalIntegrity(),
+      checkNetworkReachable()
     ]);
+    // Result index 3 is checkNetworkReachable
+    const netResult = results[3];
+    if (netResult.status === 'fulfilled') {
+      setNetworkReachable(netResult.value);
+    } else {
+      setNetworkReachable(false);
+    }
   };
 
   const handleTeacherLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -480,7 +716,11 @@ const requestEnterMode = (nextMode: AppMode) => {
       const requiresCloudValidation = hasCustomAdminPassword(activeConfig);
 
       if (requiresCloudValidation && !cloudConfig) {
-        showAppAlert('当前教师端密码已切换为云端验证，但系统暂时无法拉取云端配置。\n请检查网络或稍后重试。');
+        if (!navigator.onLine) {
+          showAppAlert('网络连接已断开。\n\n当前教师端密码已切换为云端验证，需要联网才能登录。\n请检查网络连接后重试。');
+        } else {
+          showAppAlert('当前教师端密码已切换为云端验证，但系统暂时无法拉取云端配置。\n请检查网络或稍后重试。');
+        }
         return;
       }
 
@@ -527,6 +767,11 @@ const requestEnterMode = (nextMode: AppMode) => {
     }
 
     if (name && sid) {
+      if (!navigator.onLine) {
+        showAppAlert("网络连接已断开。\n\n系统检测到当前设备未连接互联网，无法进入考试。\n请连接网络后重试。");
+        return;
+      }
+
       setIsCheckingNet(true);
       const [isLocalReady, isOnline] = await Promise.all([
           verifyLocalIntegrity(),
@@ -541,7 +786,7 @@ const requestEnterMode = (nextMode: AppMode) => {
       }
 
       if (!isOnline) {
-          showAppAlert("网络连接检测失败。\n\n系统无法连接到必要的资源服务器。\n请确认设备已连接互联网，因为本系统需要在线加载运行环境和编辑器资源。");
+          showAppAlert("网络连接检测失败。\n\n系统无法连接到必要的资源服务器，本系统需要在线加载运行环境和编辑器资源。\n请确认设备已连接互联网后重试。");
           return;
       }
 
@@ -592,6 +837,7 @@ const requestEnterMode = (nextMode: AppMode) => {
         isCheckingProviders={isCheckingProviders}
         onSaveApiSettings={handleSaveApiSettings}
         onCheckProviders={checkProviders}
+        onCheckUpdate={handleCheckUpdate}
       />
     );
   }
@@ -629,8 +875,30 @@ const requestEnterMode = (nextMode: AppMode) => {
          <div className="landing-orb landing-orb--c" />
       </div>
 
+      {/* Update notification banner */}
+      <UpdateNotification
+        status={updateStatus}
+        version={updateVersion}
+        forced={updateForced}
+        progress={updateProgress}
+        error={updateError}
+        theme={theme}
+        onDownload={handleDownloadUpdate}
+        onSkip={handleSkipUpdate}
+        onRestart={handleRestartUpdate}
+        onDismiss={handleDismissUpdate}
+      />
+
       {(mode === 'landing' || mode === 'teacher_login' || mode === 'student_login') && openingDone && (
-        <div className="absolute top-4 right-4 z-50">
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+          <ToolbarButton
+            theme={theme}
+            onClick={handleCheckUpdate}
+            title="检查更新"
+          >
+            <RefreshCw className={`w-4 h-4 ${updateStatus === 'checking' || updateStatus === 'downloading' ? 'animate-spin' : ''}`} />
+            <span className="text-xs font-medium">检查更新</span>
+          </ToolbarButton>
           <ToolbarButton
             theme={theme}
             onClick={toggleTheme}
@@ -678,6 +946,19 @@ const requestEnterMode = (nextMode: AppMode) => {
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center" style={{ gap: 'var(--landing-gap)' }}>
           {mode === 'landing' && (
             <>
+              {networkReachable === false && (
+                <div className={`landing-reveal landing-delay-1 w-full max-w-4xl flex items-center gap-3 px-4 py-3 rounded-xl border ${
+                  theme === 'light'
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : 'bg-red-950/30 border-red-500/30 text-red-300'
+                }`}>
+                  <WifiOff className="w-5 h-5 shrink-0" />
+                  <div className="text-sm text-left">
+                    <span className="font-semibold">网络未连接</span>
+                    <span className="opacity-80"> — 考试需要联网才能进入，AI 评分和云端同步功能将不可用。请检查网络后刷新重试。</span>
+                  </div>
+                </div>
+              )}
               <div className="landing-reveal landing-delay-1 bg-slate-800/50 p-4 sm:p-6 rounded-2xl border border-slate-700 ring-1 ring-white/5 backdrop-blur-sm" style={{ marginBottom: 'var(--landing-hero-mb)' }}>
                  <Code className="text-blue-400" style={{ width: 'var(--landing-icon-size)', height: 'var(--landing-icon-size)' }} />
               </div>
