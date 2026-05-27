@@ -63,21 +63,27 @@ Third-party AI keys (DeepSeek, OpenAI, etc.) are **not** stored in `.env`. After
 
 ### Supabase Setup / Supabase 配置
 
-The app requires the following Supabase resources to be set up:
+依次执行 `supabase/sql/` 下的 SQL 文件创建表和存储桶，然后部署 Edge Functions：
 
-| Resource / 资源 | Purpose / 用途 |
-|---|---|
-| `question_bank` table | Stores exam configs as JSONB |
-| `ai_provider_settings` table | Stores encrypted AI provider keys |
-| `exam-assets` storage bucket | Question images |
-| `exam-reports` storage bucket | Generated exam reports |
-| `ai-proxy` Edge Function | Proxies AI API calls |
-| `admin-get-ai-settings` Edge Function | Retrieves AI settings |
-| `admin-upsert-ai-settings` Edge Function | Saves AI settings |
+**1. SQL（在 Supabase Dashboard → SQL Editor 中执行）：**
 
-Refer to `supabase/functions/` and `supabase/` directory for the SQL migrations and Edge Function source code.
+| 顺序 | 文件 | 创建内容 |
+|---|---|---|
+| 1 | `question_bank.sql` | 题库/试卷配置表 |
+| 2 | `exam_reports.sql` | 考试报告记录表 |
+| 3 | `ai_provider_settings.sql` | AI 密钥表 |
+| 4 | `exam_feedbacks.sql` | 反馈工单表 + 反馈存储桶 |
+| 5 | `storage_buckets.sql` | 题目配图 + 报告文件存储桶 |
 
-相关的 SQL 迁移脚本和 Edge Function 源码见 `supabase/functions/` 和 `supabase/` 目录。
+**2. Edge Functions：**
+
+```bash
+supabase functions deploy admin-get-ai-settings
+supabase functions deploy admin-upsert-ai-settings
+supabase functions deploy ai-proxy
+```
+
+详细说明见 `supabase/README.md`。
 
 ```bash
 # 3. Start the dev server
