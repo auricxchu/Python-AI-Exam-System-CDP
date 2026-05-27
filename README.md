@@ -10,7 +10,28 @@ A desktop exam system for Python programming courses. Teachers manage question b
 
 ## Screenshots / 截图
 
-<!-- TODO: add screenshots of teacher dashboard and student exam UI -->
+### Landing / 主界面
+
+![主界面](external-sources/screenshots/主页面.png)
+
+### Teacher Dashboard / 教师端 — 题库管理
+
+| | |
+|---|---|
+| ![题库管理1](external-sources/screenshots/题库管理1.png) | ![题库管理2](external-sources/screenshots/题库管理2.png) |
+
+### Student Exam / 学生端 — 答题界面
+
+| | |
+|---|---|
+| ![答题页1](external-sources/screenshots/答题页1.png) | ![答题页2](external-sources/screenshots/答题页2.png) |
+
+### Reports / 成绩管理
+
+| 成绩管理 | 成绩单 |
+|---|---|
+| ![成绩管理1](external-sources/screenshots/成绩管理1.png) | ![成绩单1](external-sources/screenshots/成绩单1.png) |
+| ![成绩管理2](external-sources/screenshots/成绩管理2.png) | ![成绩单2](external-sources/screenshots/成绩单2.png) |
 
 ## Features / 功能
 
