@@ -32,8 +32,8 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewReport, setPreviewReport] = useState<ExamReportRow | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [sortField, setSortField] = useState<'name' | 'studentId' | 'score' | 'time'>('time');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<'name' | 'studentId' | 'score' | 'time'>('studentId');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const isLight = theme === 'light';
 
@@ -355,10 +355,10 @@ const ReportManager: React.FC<ReportManagerProps> = ({ theme }) => {
                 <div className={`rounded-lg border ${tableBorder} overflow-hidden`}>
                   <div className={`grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-3 px-4 py-2.5 text-xs font-bold ${tableHeaderBg} ${textMuted}`}>
                     <span className="w-6" />
-                    <SortHeader field="name" label="姓名" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader field="studentId" label="学号" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader field="score" label="得分" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader field="time" label="提交时间" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader field="name" label="姓名" sortField={sortField} sortDir={sortDir} onSort={handleSort} isLight={isLight} />
+                    <SortHeader field="studentId" label="学号" sortField={sortField} sortDir={sortDir} onSort={handleSort} isLight={isLight} />
+                    <SortHeader field="score" label="得分" sortField={sortField} sortDir={sortDir} onSort={handleSort} isLight={isLight} />
+                    <SortHeader field="time" label="提交时间" sortField={sortField} sortDir={sortDir} onSort={handleSort} isLight={isLight} />
                     <span>操作</span>
                   </div>
                   {sortReports(group.reports).map((report) => (
@@ -795,13 +795,14 @@ const SortHeader: React.FC<{
   field: SortField; label: string;
   sortField: SortField; sortDir: 'asc' | 'desc';
   onSort: (f: SortField) => void;
-}> = ({ field, label, sortField, sortDir, onSort }) => {
+  isLight: boolean;
+}> = ({ field, label, sortField, sortDir, onSort, isLight }) => {
   const active = sortField === field;
   return (
     <button
       type="button"
       onClick={() => onSort(field)}
-      className="flex items-center gap-1 hover:text-white transition-colors"
+      className={`flex items-center gap-1 transition-colors ${isLight ? 'hover:text-slate-900' : 'hover:text-white'}`}
     >
       {label}
       {active && (
