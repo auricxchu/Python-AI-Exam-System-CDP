@@ -4,6 +4,7 @@ import {
   Users, Calendar, ChevronRight, ChevronDown, CheckSquare, Square
 } from 'lucide-react';
 import CodeDiffViewer from './CodeDiffViewer';
+import CachedImage from './CachedImage';
 import JSZip from 'jszip';
 import { cloudService, ExamReportRow } from '../services/cloudService';
 import { Button, ToolbarButton } from './ui';
@@ -494,7 +495,7 @@ const ReportPreview: React.FC<{ report: ExamReportRow; theme: 'light' | 'dark' }
             {/* Question image */}
             {q.imageUrl && (
               <div className="mb-3">
-                <img
+                <CachedImage
                   src={q.imageUrl}
                   alt={`${q.title} 配图`}
                   referrerPolicy="no-referrer"
