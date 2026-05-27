@@ -15,6 +15,14 @@ autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowDowngrade = false;
 
+const SQUIRREL_EVENT_ARGS = new Set([
+  '--squirrel-install',
+  '--squirrel-updated',
+  '--squirrel-uninstall',
+  '--squirrel-obsolete',
+  '--squirrel-firstrun'
+]);
+
 let downloadedUpdateInfo = null;
 let downloadedUpdateFiles = null;
 let downloadedUpdateReadyForInstall = false;
@@ -88,15 +96,22 @@ const clearUpdateQuitFallback = () => {
 const scheduleUpdateQuitFallback = () => {
   clearUpdateQuitFallback();
   updateQuitFallbackTimer = setTimeout(() => {
-    console.warn('[autoUpdater] quitAndInstall did not quit yet; falling back to app.quit().');
-    app.quit();
-
-    setTimeout(() => {
-      if (!updateQuitInProgress) return;
-      console.warn('[autoUpdater] app.quit() did not complete; forcing process exit.');
+    if (!updateQuitInProgress) return;
+    console.warn('[autoUpdater] quitAndInstall did not restart within fallback window; falling back to app.relaunch().');
+    try {
+      app.relaunch();
+    } finally {
       app.exit(0);
-    }, 3000);
-  }, 8000);
+    }
+  }, 3000);
+};
+
+const handleSquirrelStartupEvent = () => {
+  const squirrelEvent = process.argv.find((arg) => SQUIRREL_EVENT_ARGS.has(arg));
+  if (!squirrelEvent) return false;
+
+  console.log('[autoUpdater] Squirrel startup event detected; exiting without creating window:', squirrelEvent);
+  return true;
 };
 
 const quitAndInstallUpdate = (source = 'ipc') => {
@@ -393,17 +408,19 @@ ipcMain.on('app-exit', () => {
 app.on('before-quit', () => {
   if (!updateQuitInProgress) return;
   console.log('[autoUpdater] App before-quit received after quit-and-install request.');
-  clearUpdateQuitFallback();
 });
 
 app.on('will-quit', () => {
   if (!updateQuitInProgress) return;
   console.log('[autoUpdater] App will-quit received after quit-and-install request.');
-  updateQuitInProgress = false;
-  clearUpdateQuitFallback();
 });
 
 app.whenReady().then(() => {
+  if (handleSquirrelStartupEvent()) {
+    app.exit(0);
+    return;
+  }
+
   // ── Auto-updater event forwarding ──
   autoUpdater.on('checking-for-update', () => {
     sendToRenderer('checking-for-update');
