@@ -199,8 +199,9 @@ export const cloudService = {
       const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
       // Sanitize report filename
       const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const safeExamTitle = jsonReport.examTitle.replace(/[^a-zA-Z0-9一-鿿._-]/g, '_').substring(0, 80);
-      const filePath = `${studentId}/${safeExamTitle}/${Date.now()}_${sanitizedFilename}`;
+      const safeStudentId = studentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeExamTitle = jsonReport.examTitle.replace(/[^a-zA-Z0-9一-鿿._-]/g, '_').substring(0, 80) || '未知考试';
+      const filePath = `${safeStudentId}/${safeExamTitle}/${Date.now()}_${sanitizedFilename}`;
       
       const { data: uploadData, error: uploadError } = await supabase
         .storage
